@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/activity_model.dart';
+import '../models/run_mode.dart';
 import '../models/ghost_run.dart';
 import 'weekly_goal_card.dart';
 import 'friends_week_card.dart';
@@ -9,6 +9,7 @@ import 'avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
 import 'avatar_preview.dart';
 import '../constants/app_icons.dart';
 import 'block_ui.dart';
+import 'mode_select_panel.dart';
 import 'pixel_icon.dart';
 import 'tutorial_keys.dart';
 
@@ -32,11 +33,6 @@ const _gold       = Color(0xFFFFB800);
 const _goldEdge   = Color(0xFF8A5A00);
 
 const _walk       = Color(0xFF7EE08A); // pastel green
-const _walkEdge   = Color(0xFF2F7A3B);
-const _jog        = Color(0xFF2EC4FF); // electric sky blue
-const _jogEdge    = Color(0xFF0A6C99);
-const _run        = Color(0xFFFF7A00); // neon orange
-const _runEdge    = Color(0xFF8F3F00);
 
 const _sky        = Color(0xFF8FD0FF);
 const _baseplate  = Color(0xFF5FA05A);
@@ -64,31 +60,13 @@ const List<Milestone> kMilestones = [
   Milestone(160.0, 'Legend Armor', '🛡️'),
 ];
 
-// ───────────────────────── Activity tiers ─────────────────────────
-
-class _Tier {
-  final ActivityType type;
-  final String icon; // asset path of the pixel icon
-  final String label, range;
-  final Color color, edge;
-  const _Tier(this.type, this.icon, this.label, this.range, this.color, this.edge);
-}
-
-const List<_Tier> _tiers = [
-  _Tier(ActivityType.walk, AppIcons.walkShoe, 'WALK', '< 6 km/h',     _walk, _walkEdge),
-  _Tier(ActivityType.jog,  AppIcons.jogBolt, 'JOG',  '6-10 km/h',    _jog,  _jogEdge),
-  _Tier(ActivityType.run,  AppIcons.runFire, 'RUN',  '10+ km/h',     _run,  _runEdge),
-];
-
-_Tier _tierOf(ActivityType t) => _tiers.firstWhere((x) => x.type == t);
-
 // ───────────────────────── The view ─────────────────────────
 
 class PreRunView extends StatelessWidget {
-  final ActivityType selected;
-  final ValueChanged<ActivityType> onSelect;
   final VoidCallback onBack;
-  final VoidCallback onStart;
+
+  /// Called with the mode the player picked in the Mode Selection overlay.
+  final ValueChanged<RunMode> onStart;
 
   /// Ghost race: the player's own fastest run. Null = none recorded yet.
   final GhostRun? ghost;
@@ -97,8 +75,6 @@ class PreRunView extends StatelessWidget {
 
   const PreRunView({
     super.key,
-    required this.selected,
-    required this.onSelect,
     required this.onBack,
     required this.onStart,
     this.ghost,
@@ -150,16 +126,7 @@ class PreRunView extends StatelessWidget {
                         const SizedBox(height: 16),
                         _buildViewport(data),
                         const SizedBox(height: 16),
-                        _buildTiles(),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'GPS confirms your pace during the session',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        _buildModeHint(data?['stage_records']),
                         const SizedBox(height: 14),
                         const WeeklyGoalCard(),
                         const SizedBox(height: 12),
@@ -172,7 +139,7 @@ class PreRunView extends StatelessWidget {
                     ),
                   ),
                 ),
-                _buildFooter(),
+                _buildFooter(context, data?['stage_records'], data?['stage_seen']),
               ],
             ),
           ),
@@ -368,8 +335,6 @@ class PreRunView extends StatelessWidget {
   // ───────────── avatar viewport ─────────────
 
   Widget _buildViewport(Map<String, dynamic>? data) {
-    final tier = _tierOf(selected);
-
     return LayoutBuilder(builder: (context, c) {
       final w = c.maxWidth.clamp(0.0, 340.0).toDouble();
       final h = w * 1.12;
@@ -384,8 +349,8 @@ class PreRunView extends StatelessWidget {
             decoration: BoxDecoration(
               color: _sky,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: tier.edge, width: 4),
-              boxShadow: [BoxShadow(color: tier.edge, offset: const Offset(0, 8))],
+              border: Border.all(color: _greenEdge, width: 4),
+              boxShadow: const [BoxShadow(color: _greenEdge, offset: Offset(0, 8))],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
@@ -441,23 +406,18 @@ class PreRunView extends StatelessWidget {
                     ),
                   ),
 
-                  // activity tag
-                  Positioned(
+                  // ready tag
+                  const Positioned(
                     left: 10,
                     top: 10,
                     child: Block(
-                      color: tier.color,
-                      edge: tier.edge,
+                      color: _green,
+                      edge: _greenEdge,
                       depth: 3,
                       radius: 10,
                       gloss: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                      child: IconLabel(
-                        iconPath: tier.icon,
-                        iconSize: 18,
-                        gap: 5,
-                        label: BlockText(tier.label, size: 12, stroke: 3),
-                      ),
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      child: BlockText('\u2694\uFE0F READY', size: 12, stroke: 3),
                     ),
                   ),
                 ],
@@ -469,46 +429,36 @@ class PreRunView extends StatelessWidget {
     });
   }
 
-  // ───────────── choice tiles ─────────────
+  // ───────────── mode hint (replaces the old WALK / JOG / RUN cards) ─────────────
 
-  Widget _buildTiles() {
-    return Row(
-      children: [
-        for (var i = 0; i < _tiers.length; i++) ...[
-          Expanded(child: _buildTile(_tiers[i])),
-          if (i != _tiers.length - 1) const SizedBox(width: 8),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildTile(_Tier t) {
-    final isSel = selected == t.type;
-    // unselected = muted + raised; selected = bright + pushed down
-    final color = isSel ? t.color : Color.lerp(_panel, t.color, 0.22)!;
-    final edge = isSel ? t.edge : _panelEdge;
-
-    return PressBlock(
-      color: color,
-      edge: edge,
-      depth: 6,
-      forcePressed: isSel,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-      onTap: () => onSelect(t.type),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  Widget _buildModeHint(Object? records) {
+    final stars = RunMode.totalStars(records);
+    return Block(
+      color: _panel,
+      edge: _panelEdge,
+      depth: 5,
+      radius: 16,
+      padding: const EdgeInsets.all(12),
+      child: Row(
         children: [
-          PixelIcon(t.icon, size: 30),
-          const SizedBox(height: 4),
-          BlockText(t.label, size: 15, stroke: 3.5, align: TextAlign.center),
-          const SizedBox(height: 2),
-          Text(
-            t.range,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: isSel ? 0.95 : 0.55),
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
+          const Text('\u2694\uFE0F', style: TextStyle(fontSize: 26)),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: BlockText(
+              'Tap PLAY STAGE to choose STAGE MODE (3 ranks) or ENDLESS RUN. Clear a rank to unlock the next!',
+              size: 11,
+              stroke: 3,
             ),
+          ),
+          const SizedBox(width: 8),
+          Block(
+            color: _gold,
+            edge: _goldEdge,
+            depth: 4,
+            radius: 12,
+            gloss: true,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            child: BlockText('\u2605 $stars/${RunMode.maxStars}', size: 15, stroke: 4),
           ),
         ],
       ),
@@ -586,7 +536,7 @@ class PreRunView extends StatelessWidget {
 
   // ───────────── giant action button ─────────────
 
-  Widget _buildFooter() {
+  Widget _buildFooter(BuildContext context, Object? records, Object? seen) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: const BoxDecoration(
@@ -598,12 +548,20 @@ class PreRunView extends StatelessWidget {
         child: SizedBox(
           width: double.infinity,
           child: PressBlock(
+            key: TutorialKeys.playStage,
             color: _green,
             edge: _greenEdge,
             depth: 10,
             radius: 18,
             padding: const EdgeInsets.symmetric(vertical: 20),
-            onTap: onStart,
+            onTap: () async {
+              final mode = await showModeSelectPanel(
+                context,
+                records: records is Map<String, dynamic> ? records : null,
+                seen: seen,
+              );
+              if (mode != null) onStart(mode);
+            },
             child: const Center(child: BlockText('▶ PLAY STAGE', size: 26, stroke: 5)),
           ),
         ),

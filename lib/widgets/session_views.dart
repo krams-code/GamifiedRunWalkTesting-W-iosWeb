@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:hakbanghero/models/activity_model.dart';
 import 'package:hakbanghero/models/daily_quest_definitions.dart';
 
 import '../challenges/challenge_engine.dart';
 import '../models/ghost_run.dart';
+import '../models/run_mode.dart';
 import 'block_ui.dart';
 import 'challenge_overlay.dart';
 import 'live_tracker_animation.dart';
@@ -34,12 +36,20 @@ class TrackingView extends StatelessWidget {
   final String time;
   final double speedKmh;
   final bool moving;
-  final bool paused;
   final double distanceKm;
   final String pace;
   final double maxSpeedKmh;
-  final VoidCallback onPause;
+  /// END SESSION: ends tracking, saves the run and opens the summary card.
   final VoidCallback onFinish;
+
+  /// The chosen game mode (Stage rank or Endless). Null = plain run.
+  final RunMode? mode;
+
+  /// Stage clock left, "MM:SS" (null in Endless).
+  final String? clockLeft;
+
+  /// True while the stage clock is under a minute (turns the timer red).
+  final bool clockLow;
 
   /// Sudden-challenge engine. When it has a live challenge the sprite goes to
   /// max velocity, a neon-red electric border frames the dashboard and the
@@ -56,12 +66,13 @@ class TrackingView extends StatelessWidget {
     required this.time,
     required this.speedKmh,
     required this.moving,
-    required this.paused,
     required this.distanceKm,
     required this.pace,
     required this.maxSpeedKmh,
-    required this.onPause,
     required this.onFinish,
+    this.mode,
+    this.clockLeft,
+    this.clockLow = false,
     this.challenge,
     this.ghost,
     this.elapsedSeconds = 0,
@@ -135,6 +146,10 @@ class TrackingView extends StatelessWidget {
               const SizedBox(height: 10),
               _ghostBanner(ghost!),
             ],
+            if (mode != null) ...[
+              const SizedBox(height: 10),
+              _modeStrip(mode!),
+            ],
             const SizedBox(height: 14),
 
             // Animated game stage fills the (formerly empty) middle
@@ -143,8 +158,8 @@ class TrackingView extends StatelessWidget {
               // stance and frame rate follow the real GPS speed.
               child: LiveTrackerAnimation(
                 currentUserSpeedKmh: moving ? speedKmh : 0,
-                paused: paused,
                 boost: boost,
+                mapAsset: mode?.mapAsset,
               ),
             ),
             const SizedBox(height: 14),
@@ -154,57 +169,79 @@ class TrackingView extends StatelessWidget {
               children: [
                 _stat('DISTANCE', distanceKm.toStringAsFixed(2), 'km',
                     Rb.green, Rb.greenEdge),
-                _stat('AVG PACE', pace, '/km', _yellow, _yellowEdge,
-                    dark: true),
+                _stat('AVG PACE', pace, '/km', Rb.blue, Rb.blueEdge),
                 _stat('MAX SPEED', maxSpeedKmh.toStringAsFixed(1), 'km/h',
                     Rb.orange, Rb.orangeEdge),
               ],
             ),
             const SizedBox(height: 16),
 
-            // Action footer
-            Row(
-              children: [
-                Expanded(
-                  child: PressBlock(
-                    color: _yellow,
-                    edge: _yellowEdge,
-                    depth: 8,
-                    radius: 16,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    onTap: onPause,
-                    child: Column(
-                      children: [
-                        Text(paused ? '▶' : '⏸',
-                            style: const TextStyle(fontSize: 24)),
-                        BlockText(paused ? 'RESUME' : 'PAUSE',
-                            size: 12, stroke: 3.5, color: Colors.black),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  flex: 2,
-                  child: PressBlock(
-                    color: Rb.red,
-                    edge: Rb.redEdge,
-                    depth: 8,
-                    radius: 16,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    onTap: onFinish,
-                    child: const Column(
-                      children: [
-                        Text('🏁', style: TextStyle(fontSize: 24)),
-                        BlockText('FINISH', size: 16, stroke: 4),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+            // Action footer: ONE full-width button (there is no pause).
+            // Press and HOLD so a stray tap mid-run can't end the session.
+            SizedBox(
+              width: double.infinity,
+              child: _HoldToEndButton(onComplete: onFinish),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Mode banner under the header: Stage = rank + map + target bar + clock,
+  /// Endless = a calm "just run" strip.
+  Widget _modeStrip(RunMode m) {
+    if (m.isEndless) {
+      return Block(
+        color: m.color,
+        edge: m.edge,
+        depth: 4,
+        radius: 12,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: const Row(
+          children: [
+            Expanded(
+              child: BlockText('\u267E\uFE0F ENDLESS RUN', size: 13, stroke: 3.5),
+            ),
+            BlockText('NO LIMITS', size: 11, stroke: 3, color: Color(0xFFD7C8FF)),
+          ],
+        ),
+      );
+    }
+
+    final target = m.targetKm ?? 1.0;
+    final frac = (distanceKm / target).clamp(0.0, 1.0).toDouble();
+    return Block(
+      color: m.color,
+      edge: m.edge,
+      depth: 4,
+      radius: 12,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: BlockText('${m.emoji} ${m.name} \u2022 ${m.mapName}',
+                    size: 11, stroke: 3, maxLines: 1),
+              ),
+              BlockText('\u23F3 ${clockLeft ?? '--:--'}',
+                  size: 14,
+                  stroke: 3.5,
+                  color: clockLow ? const Color(0xFFFFE066) : Colors.white),
+            ],
+          ),
+          const SizedBox(height: 6),
+          BlockBar(value: frac, height: 12, color: Rb.neon),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: BlockText(
+                '${distanceKm.toStringAsFixed(2)} / ${target.toStringAsFixed(1)} KM',
+                size: 10.5,
+                stroke: 3),
+          ),
+        ],
       ),
     );
   }
@@ -412,6 +449,22 @@ class SessionSummarySheet extends StatelessWidget {
   /// Gem rewards of friend duels this run just won.
   final List<String> duelRewards;
 
+  /// Game mode of this run + how it ended ("STAGE CLEARED!", "TIME UP", ...).
+  final RunMode? mode;
+  final String? outcome;
+  final bool outcomeGood;
+
+  /// Stage record: stars earned this run (0 = not cleared) and the crystals
+  /// that came with it (first-clear bonus + new-star bonus).
+  final int stars;
+  final int stageBonusGems;
+  final bool firstClear;
+
+  /// The next rank this clear just opened (null = none) and the shortcut to
+  /// its briefing.
+  final RunMode? unlockedRank;
+  final VoidCallback? onNextRank;
+
   const SessionSummarySheet({
     super.key,
     required this.session,
@@ -421,6 +474,14 @@ class SessionSummarySheet extends StatelessWidget {
     this.challenges = const [],
     this.ghostResult,
     this.duelRewards = const [],
+    this.mode,
+    this.outcome,
+    this.outcomeGood = false,
+    this.stars = 0,
+    this.stageBonusGems = 0,
+    this.firstClear = false,
+    this.unlockedRank,
+    this.onNextRank,
   });
 
   @override
@@ -498,6 +559,14 @@ class SessionSummarySheet extends StatelessWidget {
                       size: 12,
                       stroke: 3),
                 ),
+                if (mode != null) ...[
+                  const SizedBox(height: 10),
+                  _modeRow(mode!),
+                ],
+                if (unlockedRank != null) ...[
+                  const SizedBox(height: 10),
+                  _unlockBanner(unlockedRank!),
+                ],
                 if (ghostResult != null) ...[
                   const SizedBox(height: 10),
                   _ghostResultRow(ghostResult!),
@@ -640,8 +709,31 @@ class SessionSummarySheet extends StatelessWidget {
                 ],
 
                 const SizedBox(height: 16),
+                if (unlockedRank != null && onNextRank != null) ...[
+                  PressBlock(
+                    color: unlockedRank!.color,
+                    edge: unlockedRank!.edge,
+                    depth: 8,
+                    radius: 16,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    onTap: isSaving ? null : onNextRank,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: BlockText(
+                              'NEXT RANK \u25B6  ${unlockedRank!.name}',
+                              size: 17,
+                              stroke: 4.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
                 PressBlock(
-                  color: Rb.neon,
+                  color: Rb.green,
                   edge: Rb.greenEdge,
                   depth: 10,
                   radius: 18,
@@ -756,6 +848,73 @@ class SessionSummarySheet extends StatelessWidget {
     );
   }
 
+  /// "VANGUARD RANK UNLOCKED!" right after the clear that opened it.
+  Widget _unlockBanner(RunMode r) {
+    return Block(
+      color: const Color(0xFF1E6B45),
+      edge: const Color(0xFF0B2E1D),
+      depth: 5,
+      radius: 12,
+      gloss: true,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          children: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: BlockText('\u{1F513} ${r.name} UNLOCKED!',
+                  size: 17, stroke: 4.5, color: const Color(0xFFFFD21F)),
+            ),
+            const SizedBox(height: 2),
+            BlockText('${r.mapName}  \u2022  ${r.multLabel} rewards',
+                size: 10.5, stroke: 3, align: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _modeRow(RunMode m) {
+    final head = m.isEndless
+        ? '\u267E\uFE0F ENDLESS RUN'
+        : (outcome ?? m.name);
+    final sub = m.isEndless
+        ? '+${m.multLabel} XP & Crystals per km'
+        : '${m.emoji} ${m.name} \u2022 ${m.mapName} \u2022 ${m.multLabel} rewards';
+    return Block(
+      color: outcomeGood ? const Color(0xFF1E6B45) : m.color,
+      edge: outcomeGood ? const Color(0xFF0B2E1D) : m.edge,
+      depth: 4,
+      radius: 10,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      child: Column(
+        children: [
+          BlockText(head, size: 14, stroke: 4, align: TextAlign.center),
+          if (stars > 0) ...[
+            const SizedBox(height: 2),
+            BlockText(
+                '\u2605' * stars + '\u2606' * (3 - stars),
+                size: 26,
+                stroke: 4,
+                color: const Color(0xFFFFD21F)),
+          ],
+          const SizedBox(height: 2),
+          BlockText(sub, size: 10, stroke: 2.5, align: TextAlign.center),
+          if (stageBonusGems > 0) ...[
+            const SizedBox(height: 4),
+            BlockText(
+                '${firstClear ? 'FIRST CLEAR BONUS' : 'NEW STAR BONUS'}  +$stageBonusGems \u{1F48E}',
+                size: 12,
+                stroke: 3.5,
+                color: Rb.neon,
+                align: TextAlign.center),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _ghostResultRow(GhostResult r) {
     final secs = r.paceDelta.abs().round();
     final text = r.won
@@ -791,4 +950,125 @@ class SessionSummarySheet extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// END SESSION: press and hold
+// ═════════════════════════════════════════════════════════════════════════
+class _HoldToEndButton extends StatefulWidget {
+  final VoidCallback onComplete;
+  const _HoldToEndButton({required this.onComplete});
+
+  @override
+  State<_HoldToEndButton> createState() => _HoldToEndButtonState();
+}
+
+class _HoldToEndButtonState extends State<_HoldToEndButton>
+    with SingleTickerProviderStateMixin {
+  static const _holdTime = Duration(milliseconds: 1400);
+
+  late final AnimationController _c;
+  bool _fired = false;
+  bool _hint = false; // "keep holding" nudge after a quick tap
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: _holdTime)
+      ..addStatusListener((st) {
+        if (st == AnimationStatus.completed && !_fired) {
+          _fired = true;
+          HapticFeedback.heavyImpact();
+          widget.onComplete();
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _down() {
+    if (_fired) return;
+    setState(() => _hint = false);
+    _c.forward(from: 0);
+  }
+
+  void _up() {
+    if (_fired) return;
+    final early = _c.value < 1;
+    _c.animateBack(0, duration: const Duration(milliseconds: 180));
+    if (early) setState(() => _hint = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _down(),
+      onTapUp: (_) => _up(),
+      onTapCancel: _up,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, __) {
+          final holding = _c.isAnimating && _c.status == AnimationStatus.forward;
+          return Block(
+            color: Rb.red,
+            edge: Rb.redEdge,
+            depth: 10,
+            radius: 18,
+            padding: EdgeInsets.zero,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: _c.value.clamp(0.0, 1.0).toDouble(),
+                        heightFactor: 1,
+                        child: const ColoredBox(color: Color(0xFFB02A30)),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: BlockText('\u{1F6D1} END SESSION',
+                                size: 24, stroke: 5),
+                          ),
+                          const SizedBox(height: 2),
+                          BlockText(
+                            holding
+                                ? 'KEEP HOLDING...'
+                                : _hint
+                                    ? 'HOLD THE BUTTON TO END'
+                                    : 'PRESS AND HOLD',
+                            size: 10.5,
+                            stroke: 3,
+                            color: _hint
+                                ? const Color(0xFFFFE066)
+                                : const Color(0xFFFFD6D8),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }

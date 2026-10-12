@@ -67,7 +67,7 @@ final List<_Step> _steps = [
     kind: _Kind.info,
     target: TutorialKeys.rewards,
     title: 'EARNING REWARDS',
-    text: 'Congratulations on completing your first stage battle, Hero! '
+    text: 'Congratulations on completing your first run, Hero! '
         'Look at that! Your physical effort earned you raw EXP and Mana '
         'Crystals. Let\'s see where that goes!',
     pose: 'coach_1.png',

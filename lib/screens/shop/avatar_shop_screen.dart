@@ -141,14 +141,8 @@ const List<ShopItem> kShopCatalog = [
   ShopItem(id: 'neutral', category: ShopCategory.faces, name: 'Neutral',
       asset: '$kFaceDir/expression_01.png', emoji: '🎭'),
 
-  // 🌌 BACKGROUNDS (ids = BlockBackground ids)
-  ShopItem(id: 'valley', category: ShopCategory.backgrounds, name: 'Verdant Vale', emoji: '🌳'),
-  ShopItem(id: 'boss_map', category: ShopCategory.backgrounds, name: 'Hero Trail',
-      price: 100, emoji: '🗺️'),
-  ShopItem(id: 'ashen', category: ShopCategory.backgrounds, name: 'Ashen Peaks',
-      price: 150, emoji: '🌋'),
-  ShopItem(id: 'frozen', category: ShopCategory.backgrounds, name: 'Frozen Tundra',
-      price: 200, unlockKm: 35, emoji: '❄️'),
+  // 🌌 Scenes are no longer sold: each game mode has its own map now
+  // (see lib/models/run_mode.dart), so the SCENES tab was removed.
 ];
 
 const List<(ShopCategory, String, String)> _cats = [
@@ -1527,7 +1521,6 @@ const List<_TabDef> _tabs = [
   _TabDef(ShopCategory.colors, 'COLORS', Color(0xFFFF7A00), Color(0xFF8F3F00)),
   _TabDef(ShopCategory.clothes, 'CLOTHING', Color(0xFF00B06F), Color(0xFF006B44)),
   _TabDef(ShopCategory.faces, 'FACES', Color(0xFF9B59FF), Color(0xFF4B2A8A)),
-  _TabDef(ShopCategory.backgrounds, 'SCENES', Color(0xFF00A2FF), Color(0xFF004F7A)),
 ];
 
 // ───────────────────────── Cropped asset preview ─────────────────────────

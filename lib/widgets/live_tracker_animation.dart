@@ -14,6 +14,7 @@ import 'avatar_preview.dart';
 import 'block_ui.dart';
 import 'game_stage.dart' show SceneBackPainter;
 import 'hero_sprite.dart' show kDefaultClothes;
+import 'map_backdrop.dart';
 
 // ───────────────────────── state machine ─────────────────────────
 
@@ -103,11 +104,15 @@ class LiveTrackerAnimation extends StatefulWidget {
   /// Ignored while [paused].
   final bool boost;
 
+  /// Map picture for the chosen game mode. Null = the painted default scenery.
+  final String? mapAsset;
+
   const LiveTrackerAnimation({
     super.key,
     required this.currentUserSpeedKmh,
     this.paused = false,
     this.boost = false,
+    this.mapAsset,
     this.frameCount = 8,
     this.animRoot = 'assets/images/character/anim',
     this.scrollPxPerKmh = 28,
@@ -288,15 +293,22 @@ class _LiveTrackerAnimationState extends State<LiveTrackerAnimation>
       final groundH = h * 0.22;
       final avatarH = math.min(h * 0.78, 300.0);
       final avatarW = avatarH * kSpriteWidth / (kSpriteHeight + 44);
-      final feetY = groundH * 0.30;
+      // map pictures have their floor in the bottom ~17%: stand on it
+      final feetY = widget.mapAsset != null ? h * 0.075 : groundH * 0.30;
 
       return Stack(
         children: [
           // ── background: painted parallax scenery ──
           Positioned.fill(
-            child: RepaintBoundary(
-              child: CustomPaint(painter: SceneBackPainter(_scroll, groundH)),
-            ),
+            child: widget.mapAsset != null
+                ? MapBackdrop(
+                    asset: widget.mapAsset!,
+                    scroll: _scroll,
+                    factor: 0.9,
+                  )
+                : RepaintBoundary(
+                    child: CustomPaint(painter: SceneBackPainter(_scroll, groundH)),
+                  ),
           ),
           // ── background: optional image layers (scroll left, loop) ──
           for (final l in widget.backgroundImages)

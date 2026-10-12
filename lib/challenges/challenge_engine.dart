@@ -46,6 +46,9 @@ class ChallengeConfig {
   final double paceTriggerKm; // fires when the run crosses this distance
   final double paceSectionKm; // distance to cover
   final int paceSeconds; // time allowed
+  final int paceMaxPerRun; // 0 = never, 1 = once (default), 2+ = repeats
+  /// Distance run between the END of one Pace Keeper and the start of the next.
+  final double paceRepeatGapKm;
 
   // ── GPS sanity ──
   /// Distance credited to a challenge is rate-limited to this speed, so a
@@ -64,6 +67,8 @@ class ChallengeConfig {
     this.paceTriggerKm = 2.0,
     this.paceSectionKm = 1.0,
     this.paceSeconds = 300,
+    this.paceMaxPerRun = 1,
+    this.paceRepeatGapKm = 1.0,
     this.maxPlausibleSpeedMps = 12.5,
   });
 }
@@ -105,8 +110,12 @@ class ChallengeEngine extends ChangeNotifier {
     this.onEvent,
   }) : _rng = random ?? math.Random();
 
-  final ChallengeConfig config;
+  /// Swapped per run by [setup] (the chosen game mode decides the events).
+  ChallengeConfig config;
   final math.Random _rng;
+
+  /// False = the engine ignores updates (Novice and Endless have no events).
+  bool enabled = true;
 
   /// Called for started / succeeded / failed (the run screen plays the alarm
   /// and result sounds from here).
@@ -115,7 +124,8 @@ class ChallengeEngine extends ChangeNotifier {
   // ── run-wide bookkeeping ──
   final List<ChallengeRecord> _records = [];
   int _sprintsFired = 0;
-  bool _paceFired = false;
+  int _pacesFired = 0;
+  double _nextPaceKm = 0; // odometer reading that triggers the next Pace Keeper
   bool _seeded = false;
   int _lastElapsed = 0;
   int _lastRollElapsed = 0;
@@ -199,11 +209,19 @@ class ChallengeEngine extends ChangeNotifier {
 
   // ───────────────────────── control ─────────────────────────
 
+  /// Pick this run's events. [cfg] null = no events at all.
+  void setup(ChallengeConfig? cfg) {
+    enabled = cfg != null;
+    if (cfg != null) config = cfg;
+    reset();
+  }
+
   /// New run: forget everything.
   void reset() {
     _records.clear();
     _sprintsFired = 0;
-    _paceFired = false;
+    _pacesFired = 0;
+    _nextPaceKm = config.paceTriggerKm;
     _seeded = false;
     _kind = null;
     _creditedKm = 0;
@@ -241,6 +259,7 @@ class ChallengeEngine extends ChangeNotifier {
     required double distanceKm,
     required bool moving,
   }) {
+    if (!enabled) return;
     _seedIfNeeded(elapsedSeconds, distanceKm);
 
     // GPS rate limiter: credit at most maxPlausibleSpeed x time.
@@ -281,7 +300,7 @@ class ChallengeEngine extends ChangeNotifier {
 
   void _maybeTrigger(int elapsed, double distanceKm, bool moving) {
     // Pace Keeper: a fixed milestone, so it always wins over a random roll.
-    if (!_paceFired && distanceKm >= config.paceTriggerKm) {
+    if (_pacesFired < config.paceMaxPerRun && distanceKm >= _nextPaceKm) {
       _start(ChallengeKind.paceKeeper, elapsed, distanceKm);
       return;
     }
@@ -315,7 +334,9 @@ class ChallengeEngine extends ChangeNotifier {
     if (kind == ChallengeKind.sprintBlitz) {
       _sprintsFired++;
     } else {
-      _paceFired = true;
+      _pacesFired++;
+      // the next trial starts one gap after THIS one would end
+      _nextPaceKm = distanceKm + config.paceSectionKm + config.paceRepeatGapKm;
     }
     onEvent?.call(ChallengeEvent(ChallengeEventType.started, kind));
     notifyListeners();

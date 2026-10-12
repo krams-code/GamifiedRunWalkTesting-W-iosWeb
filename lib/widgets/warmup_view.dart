@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../constants/app_icons.dart';
@@ -7,8 +9,9 @@ import 'block_ui.dart';
 import 'demo_window.dart';
 import 'pixel_icon.dart';
 
-const _yellow = Color(0xFFFFD21F);
-const _yellowEdge = Color(0xFF8A6D00);
+// deeper amber than before: white labels stay readable on it
+const _yellow = Color(0xFFF2A100);
+const _yellowEdge = Color(0xFF7A4B00);
 const _slate = Color(0xFF2F3640);
 const _slateLight = Color(0xFF454B54);
 
@@ -25,6 +28,12 @@ class WarmUpView extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onSkip;
 
+  /// Second thoughts: leave warm-up and return to the start screen.
+  final VoidCallback? onBack;
+
+  /// "GET READY" countdown (seconds) shown before the first exercise.
+  final int getReadySeconds;
+
   /// What the player is prepping for; decides which exercises can appear.
   final ActivityType activityType;
 
@@ -38,6 +47,8 @@ class WarmUpView extends StatefulWidget {
     super.key,
     required this.onComplete,
     required this.onSkip,
+    this.onBack,
+    this.getReadySeconds = 5,
     this.activityType = ActivityType.run,
     this.stepSeconds = 30,
     this.stepCount = 4,
@@ -54,7 +65,14 @@ class _WarmUpViewState extends State<WarmUpView>
   final Set<int> _skipped = {}; // slots the player removed before starting
   List<WarmUpEntry> _routine = const []; // what actually runs
   bool _started = false;
+  bool _done = false; // onComplete / onSkip / onBack fire only once
   int _index = 0;
+
+  // GET READY countdown (same look as the live duel room)
+  Timer? _countTimer;
+  Timer? _goTimer;
+  bool _counting = false;
+  int _count = 0;
 
   @override
   void initState() {
@@ -74,6 +92,8 @@ class _WarmUpViewState extends State<WarmUpView>
 
   @override
   void dispose() {
+    _countTimer?.cancel();
+    _goTimer?.cancel();
     _stepCtrl.removeStatusListener(_onStepStatus);
     _stepCtrl.dispose();
     super.dispose();
@@ -90,7 +110,42 @@ class _WarmUpViewState extends State<WarmUpView>
       _skip(); // every exercise was skipped -> straight to the run
       return;
     }
+    if (_counting || _started) return;
+    if (widget.getReadySeconds <= 0) {
+      _beginSteps();
+      return;
+    }
     setState(() {
+      _counting = true;
+      _count = widget.getReadySeconds;
+    });
+    _countTimer?.cancel();
+    _countTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted || !_counting) {
+        t.cancel();
+        return;
+      }
+      setState(() => _count--);
+      if (_count <= 0) {
+        t.cancel();
+        // let "GO!" show for a beat, then the first exercise starts
+        _goTimer = Timer(const Duration(milliseconds: 800), _beginSteps);
+      }
+    });
+  }
+
+  /// CANCEL during the countdown: back to the training-quest list.
+  void _cancelCountdown() {
+    _countTimer?.cancel();
+    _goTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _counting = false);
+  }
+
+  void _beginSteps() {
+    if (!mounted || !_counting && widget.getReadySeconds > 0) return;
+    setState(() {
+      _counting = false;
       _started = true;
       _index = 0;
     });
@@ -121,13 +176,28 @@ class _WarmUpViewState extends State<WarmUpView>
   /// The run screen may refuse to continue (e.g. location denied) and then
   /// shows its own prompt, so these never lock the screen for good.
   void _finish() {
+    if (_done) return;
+    _done = true;
     _stepCtrl.stop();
     widget.onComplete(); // → Active Tracking stage
   }
 
   void _skip() {
+    if (_done) return;
+    _done = true;
+    _countTimer?.cancel();
+    _goTimer?.cancel();
     _stepCtrl.stop();
     widget.onSkip();
+  }
+
+  void _back() {
+    if (_done) return;
+    _done = true;
+    _countTimer?.cancel();
+    _goTimer?.cancel();
+    _stepCtrl.stop();
+    widget.onBack?.call();
   }
 
   int get _secondsLeft =>
@@ -140,48 +210,125 @@ class _WarmUpViewState extends State<WarmUpView>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Rb.bg,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-          child: Column(
-            children: [
-              _SlateBlock(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                child: Column(
-                  children: [
-                    const FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: IconLabel(
-                        iconPath: AppIcons.gearShield,
-                        iconSize: 28,
-                        label: BlockText('PRE-RUN PREPARATION',
-                            size: 20, stroke: 4.5),
-                      ),
+    return PopScope(
+      canPop: widget.onBack == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_counting) {
+          _cancelCountdown();
+        } else {
+          _back();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Rb.bg,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+            child: Column(
+              children: [
+                if (widget.onBack != null && !_counting) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: PressBlock(
+                      color: Rb.slot,
+                      edge: Rb.panelEdge,
+                      depth: 4,
+                      radius: 14,
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      onTap: _back,
+                      child: const BlockText('\u25C0  BACK',
+                          size: 14, stroke: 3.5),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _started
-                          ? 'Prepare your body before starting your adventure.'
-                          : 'A short warm-up is recommended before every run.',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFFD7DADD),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _SlateBlock(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  child: Column(
+                    children: [
+                      const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: IconLabel(
+                          iconPath: AppIcons.gearShield,
+                          iconSize: 28,
+                          label: BlockText('PRE-RUN PREPARATION',
+                              size: 20, stroke: 4.5),
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        _started
+                            ? 'Prepare your body before starting your adventure.'
+                            : _counting
+                                ? 'Find your spot and get in position.'
+                                : 'A short warm-up is recommended before every run.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFD7DADD),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              if (_started) _active() else _preview(),
-            ],
+                const SizedBox(height: 18),
+                if (_started)
+                  _active()
+                else if (_counting)
+                  _countdownView()
+                else
+                  _preview(),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  // ── GET READY countdown (before the first exercise) ───────────────────
+  Widget _countdownView() {
+    final go = _count <= 0;
+    final first = _routine.isNotEmpty ? _routine.first : null;
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        const BlockText('GET READY!', size: 30, stroke: 6.5, color: Rb.gold),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 170,
+          child: Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: child),
+              child: BlockText(
+                go ? 'GO!' : '$_count',
+                key: ValueKey<int>(_count),
+                size: 130,
+                stroke: 12,
+                color: go ? Rb.neon : Colors.white,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (first != null) ...[
+          const BlockText('FIRST UP', size: 11, stroke: 3, color: Color(0xFFB8BDC4)),
+          const SizedBox(height: 4),
+          BlockText(first.exercise.name.toUpperCase(),
+              size: 18, stroke: 4, align: TextAlign.center),
+          const SizedBox(height: 4),
+        ],
+        const BlockText('Your warm-up starts when the timer hits zero.',
+            size: 11, stroke: 3, color: Color(0xFFB8BDC4), align: TextAlign.center),
+        const SizedBox(height: 22),
+        _SlateButton(label: 'CANCEL', onTap: _cancelCountdown),
+      ],
     );
   }
 

@@ -9,6 +9,9 @@ abstract final class TutorialKeys {
   /// The "Milestone x / y" banner with the progress bar (top of RUN tab).
   static final GlobalKey milestone = GlobalKey(debugLabel: 'tutorial-milestone');
 
+  /// The big green ▶ PLAY STAGE button (opens the mode panel).
+  static final GlobalKey playStage = GlobalKey(debugLabel: 'tutorial-play-stage');
+
   /// The big blue RUN block in the bottom nav bar.
   static final GlobalKey runButton = GlobalKey(debugLabel: 'tutorial-run');
 

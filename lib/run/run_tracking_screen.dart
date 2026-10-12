@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hakbanghero/models/activity_model.dart';
 import 'package:hakbanghero/models/daily_quest_definitions.dart';
 import 'package:hakbanghero/models/ghost_run.dart';
+import '../models/run_mode.dart';
 import '../services/friends_service.dart';
 
 import '../challenges/challenge_audio.dart';
@@ -18,6 +19,7 @@ import '../widgets/block_ui.dart';
 import '../widgets/post_run_tutorial.dart';
 import '../widgets/pre_run_view.dart';
 import '../widgets/session_views.dart';
+import '../widgets/stage_briefing_view.dart';
 import '../widgets/warmup_view.dart';
 
 class RunTrackingScreen extends StatefulWidget {
@@ -49,7 +51,24 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   // ── State machine ──────────────────────────────────────────────────────────
   _Phase _phase = _Phase.preRun;
 
+  /// Warm-up difficulty follows the mode; the real type is detected from GPS.
   ActivityType _userPick = ActivityType.run;
+
+  /// The mode chosen in the Mode Selection overlay (Stage rank or Endless).
+  RunMode _mode = kNovice;
+
+  /// Set once when the session is being ended (END SESSION, target reached or
+  /// the stage clock ran out) so it can never be saved twice.
+  bool _ending = false;
+  String? _outcome; // "STAGE CLEARED!" / "TIME UP" / null
+  bool _outcomeGood = false;
+
+  // Stage record result of the run that just ended (shown on the summary)
+  int _stageStars = 0;
+  int _stageBonusGems = 0;
+  bool _stageFirstClear = false;
+  RunMode? _unlockedRank; // next rank this clear just opened
+  RunMode? _pendingNextRank; // set when NEXT RANK is tapped on the summary
 
   // ── GPS / tracking ─────────────────────────────────────────────────────────
   StreamSubscription<Position>? _positionSub;
@@ -68,7 +87,6 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
   int _elapsedSeconds = 0;
 
-  bool _isPaused = false;
   DateTime? _lastMoveAt;
 
   // ── Animations ─────────────────────────────────────────────────────────────
@@ -165,7 +183,6 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
   /// True while GPS reported real movement in the last few seconds.
   bool get _isMoving =>
-      !_isPaused &&
       _lastMoveAt != null &&
       DateTime.now().difference(_lastMoveAt!).inSeconds < 4;
 
@@ -220,10 +237,38 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
   // ── PRE-RUN → WARM-UP ─────────────────────────────────────────────────────
 
-  void _startWarmUp() {
+  /// A mode was chosen in the overlay: remember it and head to the warm-up.
+  void _onModePicked(RunMode mode) {
     setState(() {
-      _phase = _Phase.warmUp;
+      _applyMode(mode);
+      // Stage ranks get a briefing card first; Endless goes straight on.
+      _phase = mode.isStage ? _Phase.briefing : _Phase.warmUp;
     });
+  }
+
+  void _applyMode(RunMode mode) {
+    _mode = mode;
+    // warm-up intensity follows the rank (GPS decides the real type)
+    _userPick = mode.id == kNovice.id
+        ? ActivityType.walk
+        : mode.id == kSlayer.id
+            ? ActivityType.run
+            : ActivityType.jog;
+  }
+
+  /// NEXT RANK on the summary: close it and land on the new rank's briefing.
+  Future<void> _onNextRank() async {
+    final next = _unlockedRank;
+    if (next == null) return;
+    _pendingNextRank = next;
+    // the player already saw it unlocked: retire the NEW! badge
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'stage_seen': FieldValue.arrayUnion([next.id]),
+      }).catchError((_) {});
+    }
+    await _onSummaryDone();
   }
 
   void _skipWarmUp() {
@@ -365,6 +410,9 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     _positionSub?.cancel();
     _timer?.cancel();
 
+    // Stage ranks fire their own events; Novice and Endless have none.
+    _challenge.setup(_mode.challengeConfig);
+
     setState(() {
       _phase = _Phase.tracking;
 
@@ -374,7 +422,13 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
       _elapsedSeconds = 0;
 
-      _isPaused = false;
+      _ending = false;
+      _outcome = null;
+      _outcomeGood = false;
+      _stageStars = 0;
+      _stageBonusGems = 0;
+      _stageFirstClear = false;
+      _unlockedRank = null;
 
       _speedSamples.clear();
       _routePoints.clear();
@@ -388,16 +442,15 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       _summaryGhost = null;
     });
 
-    _challenge.reset();
-
     _timer = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
-        if (!_isPaused && mounted) {
+        if (mounted) {
           setState(() {
             _elapsedSeconds++;
           });
           _tickChallenge();
+          _checkStageLimits();
         }
       },
     );
@@ -413,7 +466,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       locationSettings: locationSettings,
     ).listen(
       (Position pos) {
-        if (!mounted || _isPaused) {
+        if (!mounted) {
           return;
         }
 
@@ -449,6 +502,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
               });
             });
             _tickChallenge();
+            _checkStageLimits();
           }
         }
 
@@ -470,18 +524,42 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     );
   }
 
-  // ── PAUSE ──────────────────────────────────────────────────────────────────
+  // ── STAGE LIMITS / END SESSION ─────────────────────────────────────────────
 
-  void _togglePause() {
-    setState(() {
-      _isPaused = !_isPaused;
-    });
+  /// Seconds left on the stage clock (null in Endless).
+  int? get _clockLeftSeconds {
+    final total = _mode.clockSeconds;
+    if (total == null) return null;
+    return math.max(0, total - _elapsedSeconds);
+  }
 
-    if (_isPaused) {
-      _positionSub?.pause();
-    } else {
-      _positionSub?.resume();
+  String? get _clockLeftLabel {
+    final left = _clockLeftSeconds;
+    if (left == null) return null;
+    final m = left ~/ 60;
+    final sec = left % 60;
+    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  /// Stage target reached -> STAGE CLEARED. Clock at zero -> TIME UP.
+  void _checkStageLimits() {
+    if (_phase != _Phase.tracking || _ending || !_mode.isStage) return;
+    final target = _mode.targetKm;
+    if (target != null && _distanceKm >= target) {
+      _endSession(outcome: 'STAGE CLEARED!', good: true);
+    } else if (_clockLeftSeconds == 0) {
+      _endSession(outcome: 'TIME UP', good: false);
     }
+  }
+
+  /// The one way a run ends: END SESSION, target reached or time up.
+  /// No confirmation step. It saves the run and opens the summary card.
+  Future<void> _endSession({String? outcome, bool good = false}) async {
+    if (_ending || _phase != _Phase.tracking) return;
+    _ending = true;
+    _outcome = outcome ?? (_mode.isStage ? 'ENDED EARLY' : null);
+    _outcomeGood = good;
+    await _stopAndSave();
   }
 
   // ── STOP & SAVE ────────────────────────────────────────────────────────────
@@ -536,14 +614,18 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       }
     }
 
+    // Mode multiplier: Novice 1.0x, Vanguard 1.5x, Slayer 2.5x, Endless 0.2x.
+    final mult = _mode.rewardMult;
+
     final xp =
-        (_distanceKm * 100 +
-                    _elapsedSeconds / 60 * 5)
-                .toInt() +
-            bonusXp;
+        ((_distanceKm * 100 + _elapsedSeconds / 60 * 5) * mult).round() +
+            (bonusXp * mult).round();
 
     final coins =
-        (_distanceKm * 10).toInt();
+        (_distanceKm * 10 * mult).round();
+
+    // Challenge crystals scale with the mode; the ghost prize stays fixed.
+    final modeGems = (bonusGems * mult).round();
 
     final sessionStart =
         DateTime.now().subtract(
@@ -553,7 +635,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     final session = ActivitySession(
       id: '',
       type: finalType,
-      userPick: _userPick,
+      userPick: finalType,
       startTime: sessionStart,
       endTime: DateTime.now(),
       distanceKm:
@@ -600,6 +682,9 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
             'challenges':
                 challengeRecords.map((r) => r.toMap()).toList(),
           if (ghostResult != null) 'ghost': ghostResult.toMap(),
+          'mode': _mode.id,
+          'reward_mult': mult,
+          if (_outcome != null) 'stage_result': _outcome,
         });
 
         // 2. Update user totals.
@@ -615,8 +700,8 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
           'coins':
               FieldValue.increment(coins),
           // Sudden-quest bonuses (Mana Crystals are the `gems` field).
-          if (bonusGems + ghostGems > 0)
-            'gems': FieldValue.increment(bonusGems + ghostGems),
+          if (modeGems + ghostGems > 0)
+            'gems': FieldValue.increment(modeGems + ghostGems),
           if (lootChests > 0)
             'loot_chests': FieldValue.increment(lootChests),
         });
@@ -665,6 +750,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
                 session.distanceKm;
 
             int crystalsToAdd = 0;
+            Map<String, dynamic>? recordUpdate;
 
             // Check quest thresholds.
             for (final quest
@@ -694,6 +780,42 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
               }
             }
 
+            // Stage record: stars + first-clear bonus (cleared stages only).
+            if (_mode.isStage && _outcomeGood) {
+              final all = Map<String, dynamic>.from(
+                  data['stage_records'] as Map? ?? {});
+              final old = Map<String, dynamic>.from(
+                  all[_mode.id] as Map? ?? {});
+              final oldStars = (old['stars'] as num?)?.toInt() ?? 0;
+              final oldBest = (old['best_secs'] as num?)?.toInt() ?? 0;
+              final oldClears = (old['clears'] as num?)?.toInt() ?? 0;
+              final stars = _mode.starsFor(_elapsedSeconds);
+              final first = oldStars == 0;
+              final newStars = stars > oldStars ? stars - oldStars : 0;
+              final bonus = (first ? _mode.firstClearGems : 0) +
+                  newStars * RunMode.starGems;
+              all[_mode.id] = {
+                'stars': math.max(stars, oldStars),
+                'best_secs': oldBest > 0
+                    ? math.min(oldBest, _elapsedSeconds)
+                    : _elapsedSeconds,
+                'clears': oldClears + 1,
+              };
+              recordUpdate = all;
+              crystalsToAdd += bonus;
+              _stageStars = stars;
+              _stageBonusGems = bonus;
+              _stageFirstClear = first;
+              // first clear of this rank opens the next one (if there is one)
+              RunMode? opened;
+              if (first) {
+                for (final m in kStageModes) {
+                  if (m.requiresId == _mode.id) opened = m;
+                }
+              }
+              _unlockedRank = opened;
+            }
+
             final Map<String, dynamic>
                 updates = {
               'daily_progress_km':
@@ -708,6 +830,10 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
                 session.distanceKm,
               ),
             };
+
+            if (recordUpdate != null) {
+              updates['stage_records'] = recordUpdate;
+            }
 
             if (crystalsToAdd > 0) {
               updates['gems'] =
@@ -766,6 +892,14 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
             _newlyCompletedQuests,
         challenges: _summaryChallenges,
         ghostResult: _summaryGhost,
+        mode: _mode,
+        outcome: _outcome,
+        outcomeGood: _outcomeGood,
+        stars: _stageStars,
+        stageBonusGems: _stageBonusGems,
+        firstClear: _stageFirstClear,
+        unlockedRank: _unlockedRank,
+        onNextRank: _unlockedRank == null ? null : _onNextRank,
         onDone: _onSummaryDone,
       ),
     );
@@ -808,13 +942,20 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     // Do NOT Navigator.pop() the RunTrackingScreen.
     // It lives inside MainShell's IndexedStack.
     if (mounted) {
+      final next = _pendingNextRank;
+      _pendingNextRank = null;
       setState(() {
-        _phase = _Phase.preRun;
+        if (next != null) {
+          _applyMode(next);
+          _phase = _Phase.briefing;
+        } else {
+          _phase = _Phase.preRun;
+        }
         _distanceKm = 0;
         _currentSpeedKmh = 0;
         _maxSpeedKmh = 0;
         _elapsedSeconds = 0;
-        _isPaused = false;
+        _ending = false;
         _lastPosition = null;
         _speedSamples.clear();
         _routePoints.clear();
@@ -866,6 +1007,15 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
           activityType: _userPick,
           onComplete: _startTracking,
           onSkip: _skipWarmUp,
+          onBack: () => setState(() =>
+              _phase = _mode.isStage ? _Phase.briefing : _Phase.preRun),
+        );
+
+      case _Phase.briefing:
+        return StageBriefingView(
+          mode: _mode,
+          onBegin: () => setState(() => _phase = _Phase.warmUp),
+          onBack: () => setState(() => _phase = _Phase.preRun),
         );
 
       case _Phase.tracking:
@@ -880,14 +1030,8 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
   Widget _buildPreRun() {
     return PreRunView(
-      selected: _userPick,
-      onSelect: (type) {
-        setState(() {
-          _userPick = type;
-        });
-      },
       onBack: _exitRunScreen,
-      onStart: _startWarmUp,
+      onStart: _onModePicked,
       ghost: _ghost,
       ghostOn: _ghostOn,
       onGhostToggle: () => setState(() => _ghostOn = !_ghostOn),
@@ -897,37 +1041,30 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   // ── ACTIVE TRACKING ────────────────────────────────────────────────────────
 
   Widget _buildTracking() {
+    final left = _clockLeftSeconds;
     return TrackingView(
       type: _effectiveType,
       time: _formattedTime,
       speedKmh: _currentSpeedKmh,
       moving: _isMoving,
-      paused: _isPaused,
       distanceKm: _distanceKm,
       pace: _pace,
       maxSpeedKmh: _maxSpeedKmh,
-      onPause: _togglePause,
-      onFinish: _confirmStop,
-      challenge: _challenge,
+      onFinish: () => _endSession(),
+      mode: _mode,
+      clockLeft: _clockLeftLabel,
+      clockLow: left != null && left <= 60,
+      // Novice and Endless have no sudden events at all
+      challenge: _challenge.enabled ? _challenge : null,
       ghost: _raceGhost,
       elapsedSeconds: _elapsedSeconds,
-    );
-  }
-
-  // ── CONFIRM STOP ───────────────────────────────────────────────────────────
-
-  void _confirmStop() {
-    showFinishDialog(
-      context,
-      distanceKm: _distanceKm,
-      time: _formattedTime,
-      onFinish: _stopAndSave,
     );
   }
 }
 
 enum _Phase {
   preRun,
+  briefing,
   warmUp,
   tracking,
   summary,

@@ -36,11 +36,29 @@ final List<_TutorialStep> _steps = [
     radius: 18,
   ),
   _TutorialStep(
+    TutorialKeys.playStage,
+    'PICK YOUR MODE',
+    'Tap PLAY STAGE to open the mode panel. Choose STAGE MODE for the main '
+        'campaign, or ENDLESS RUN for a relaxed run with no target and no clock!',
+    'coach_3.png',
+    radius: 22,
+  ),
+  _TutorialStep(
+    TutorialKeys.playStage,
+    'CLIMB THE RANKS',
+    'Stage Mode has 3 ranks: Novice, Vanguard and Slayer. Reach the target '
+        'distance before the clock ends to earn up to 3 stars. Clear a rank to '
+        'unlock the next one, and harder ranks pay bigger rewards!',
+    'coach_2.png',
+    radius: 22,
+  ),
+  _TutorialStep(
     TutorialKeys.runButton,
     'START TRAINING',
-    'Ready to train? Tap this central block anytime to pick your pace and '
-        'enter your first fitness stage battle!',
-    'coach_3.png',
+    'Ready to train? Tap this central RUN block anytime to come back here, '
+        'pick a mode, and begin your first stage battle! To finish a run, '
+        'press and hold END SESSION.',
+    'coach_1.png',
     radius: 24,
   ),
 ];
