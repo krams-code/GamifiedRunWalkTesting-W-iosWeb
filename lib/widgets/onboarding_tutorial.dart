@@ -3,8 +3,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/run_mode.dart';
 import 'block_ui.dart';
 import 'tutorial_keys.dart';
+import 'emoji_icons.dart';
+import 'lottie_fx.dart';
 
 /// Tutorial guide poses: coach_1 (thumbs up), coach_2 (open hand), coach_3 (clipboard).
 const kCoachDir = 'assets/images/guide';
@@ -18,6 +21,9 @@ class _TutorialStep {
   const _TutorialStep(this.target, this.title, this.text, this.pose,
       {this.radius = 22});
 }
+
+String _rankLine(RunMode m) =>
+    '${m.name}: ${m.targetKm!.toStringAsFixed(1)} km in ${m.clockMinutes} min (${m.multLabel})';
 
 final List<_TutorialStep> _steps = [
   _TutorialStep(
@@ -37,27 +43,40 @@ final List<_TutorialStep> _steps = [
   ),
   _TutorialStep(
     TutorialKeys.playStage,
-    'PICK YOUR MODE',
-    'Tap PLAY STAGE to open the mode panel. Choose STAGE MODE for the main '
-        'campaign, or ENDLESS RUN for a relaxed run with no target and no clock!',
+    'THREE WAYS TO PLAY',
+    'Tap PLAY STAGE to pick a mode. STAGE MODE is the main campaign: reach a '
+        'target distance before the clock runs out. INTERVAL RUN alternates 1 min '
+        'FAST and 1 min EASY for 6 rounds. ENDLESS RUN is the relaxed one: no '
+        'target, no clock, just move and earn per kilometer!',
     'coach_3.png',
     radius: 22,
   ),
   _TutorialStep(
     TutorialKeys.playStage,
-    'CLIMB THE RANKS',
-    'Stage Mode has 3 ranks: Novice, Vanguard and Slayer. Reach the target '
-        'distance before the clock ends to earn up to 3 stars. Clear a rank to '
-        'unlock the next one, and harder ranks pay bigger rewards!',
+    'THE 3 RANKS',
+    'Three ranks, harder = bigger rewards:\n'
+        '${_rankLine(kNovice)}\n'
+        '${_rankLine(kVanguard)}\n'
+        '${_rankLine(kSlayer)}\n'
+        'Finish faster for up to 3 stars!',
     'coach_2.png',
     radius: 22,
   ),
   _TutorialStep(
+    TutorialKeys.playStage,
+    'RUN TO UNLOCK',
+    'Every rank starts locked except NOVICE. Clear NOVICE to unlock '
+        'VANGUARD, INTERVAL RUN and ENDLESS RUN. Clear VANGUARD to unlock SLAYER. You '
+        'earn your way up, one run at a time!',
+    'coach_1.png',
+    radius: 22,
+  ),
+  _TutorialStep(
     TutorialKeys.runButton,
-    'START TRAINING',
-    'Ready to train? Tap this central RUN block anytime to come back here, '
-        'pick a mode, and begin your first stage battle! To finish a run, '
-        'press and hold END SESSION.',
+    'CHOOSE YOUR FIRST MODE',
+    'Time to pick your first mode! Only NOVICE RANK is open right now, so '
+        'tap it on the next screen and start running. To finish a run '
+        'later, press and hold END SESSION.',
     'coach_1.png',
     radius: 24,
   ),
@@ -200,6 +219,9 @@ class _TutorialOverlayState extends State<_TutorialOverlay>
             ),
           ),
 
+          // animated pointer next to the spotlight
+          if (_ready) _pointer(context),
+
           // skip (top-right)
           Positioned(
             top: mq.padding.top + 10,
@@ -219,6 +241,31 @@ class _TutorialOverlayState extends State<_TutorialOverlay>
           // on the screen (step 3), otherwise sits at the bottom.
           if (_ready) _coachBox(context, step, last),
         ],
+      ),
+    );
+  }
+
+  /// Bouncing arrow above a low target (RUN / PLAY buttons) or a tapping
+  /// hand under a high one (hero, milestone bar).
+  Widget _pointer(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final low = _to.center.dy > mq.size.height * 0.6;
+    const s = 84.0;
+    final left =
+        (_to.center.dx - s / 2).clamp(4.0, mq.size.width - s - 4).toDouble();
+    final top = (low ? _to.top - s + 6 : _to.bottom - 10)
+        .clamp(mq.padding.top + 4, mq.size.height - s - 4)
+        .toDouble();
+    return Positioned(
+      left: left,
+      top: top,
+      width: s,
+      height: s,
+      child: AnimatedBuilder(
+        animation: _move,
+        builder: (_, child) => Opacity(
+            opacity: Curves.easeIn.transform(_move.value), child: child),
+        child: FxLoop(low ? Fx.arrowBounce : Fx.pointingHand),
       ),
     );
   }
@@ -247,7 +294,7 @@ class _TutorialOverlayState extends State<_TutorialOverlay>
                 height: 150,
                 width: 90,
                 child: Center(
-                    child: Text('🧑‍🏫', style: TextStyle(fontSize: 64))),
+                    child: EmojiText('🧑‍🏫', style: TextStyle(fontSize: 64))),
               ),
             ),
           ),
@@ -326,7 +373,7 @@ class _TutorialOverlayState extends State<_TutorialOverlay>
                             horizontal: 18, vertical: 9),
                         onTap: _next,
                         child: BlockText(
-                            last ? '[ LET\'S GO! ]' : '[ NEXT ]',
+                            last ? '[ CHOOSE MODE! ]' : '[ NEXT ]',
                             size: 13,
                             stroke: 3.5),
                       ),

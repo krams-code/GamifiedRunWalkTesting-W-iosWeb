@@ -53,7 +53,41 @@ flutter:
     - assets/images/guide/
     - assets/fonts/
     - assets/animations/
+    - assets/animations/lottie/
     - assets/audio/
     - assets/images/icons/
+    - assets/images/icons/items/
     - assets/images/warmup/
     - assets/images/maps/
+    - assets/images/heroes/sprout/underweight/
+    - assets/images/heroes/sprout/normal/
+    - assets/images/heroes/sprout/overweight/
+    - assets/images/heroes/sprout/obese/
+    - assets/images/heroes/ember/underweight/
+    - assets/images/heroes/ember/normal/
+    - assets/images/heroes/ember/overweight/
+    - assets/images/heroes/ember/obese/
+    - assets/images/heroes/blaze/underweight/
+    - assets/images/heroes/blaze/normal/
+    - assets/images/heroes/blaze/overweight/
+    - assets/images/heroes/blaze/obese/
+    - assets/images/heroes/nova/underweight/
+    - assets/images/heroes/nova/normal/
+    - assets/images/heroes/nova/overweight/
+    - assets/images/heroes/nova/obese/
+    - assets/images/heroes/frost/underweight/
+    - assets/images/heroes/frost/normal/
+    - assets/images/heroes/frost/overweight/
+    - assets/images/heroes/frost/obese/
+    - assets/images/heroes/jade/underweight/
+    - assets/images/heroes/jade/normal/
+    - assets/images/heroes/jade/overweight/
+    - assets/images/heroes/jade/obese/
+    - assets/images/heroes/aurum/underweight/
+    - assets/images/heroes/aurum/normal/
+    - assets/images/heroes/aurum/overweight/
+    - assets/images/heroes/aurum/obese/
+    - assets/images/heroes/shadow/underweight/
+    - assets/images/heroes/shadow/normal/
+    - assets/images/heroes/shadow/overweight/
+    - assets/images/heroes/shadow/obese/

@@ -7,6 +7,7 @@ import '../../widgets/pixel_icon.dart';
 import '../../widgets/hero_sprite.dart';
 import '../../services/friends_service.dart';
 import '../friends/friends_screen.dart';
+import '../../widgets/lottie_fx.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -16,6 +17,14 @@ class LeaderboardScreen extends StatefulWidget {
 }
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
+  // Created ONCE so rebuilds don't reconnect the listener (no spinner flash).
+  late final Stream<QuerySnapshot> _board = FirebaseFirestore.instance
+      .collection('users')
+      .orderBy('xp', descending: true)
+      .limit(100)
+      .snapshots();
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _requests;
+
   int _timeIdx = 2; // 0 week, 1 month, 2 all time (only all-time is live)
   String _genderFilter = 'all';
 
@@ -41,15 +50,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             ),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('users')
-                    .orderBy('xp', descending: true)
-                    .limit(100)
-                    .snapshots(),
+                stream: _board,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                        child: CircularProgressIndicator(color: Rb.green));
+                    return const LoadingRunner();
                   }
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     return _emptyNote('No heroes on the board yet.');
@@ -129,9 +133,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget _friendsButton() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: uid == null
-          ? null
-          : FriendsService.requests.where('to', isEqualTo: uid).snapshots(),
+      stream: uid == null ? null : (_requests ??= FriendsService.requests.where('to', isEqualTo: uid).snapshots()),
       builder: (context, snap) {
         final pending = snap.data?.docs
                 .where((d) => d.data()['status'] == 'pending')
@@ -413,7 +415,8 @@ class _BustThumb extends StatelessWidget {
           maxHeight: double.infinity,
           child: Transform.translate(
             offset: Offset(0, size * 0.2), // room for tall hair above the head
-            child: HeroSprite.fromData(data, height: size * 2.4, ownerUid: uid),
+            child: HeroSprite.fromData(data,
+                height: size * 2.4, ownerUid: uid, bust: true),
           ),
         ),
       ),

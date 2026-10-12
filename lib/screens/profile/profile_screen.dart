@@ -14,6 +14,9 @@ import '../../widgets/block_ui.dart';
 import '../../widgets/evolution_checkin_dialog.dart';
 import '../../widgets/global_top_bar.dart' show confirmLogout;
 import '../character/character_creation_screen.dart';
+import '../character/hero_picker_screen.dart';
+import '../../widgets/emoji_icons.dart';
+import '../../widgets/lottie_fx.dart';
 
 /// Player profile + fitness stat dashboard (Roblox block style).
 ///
@@ -93,6 +96,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _pickHero() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HeroPickerScreen()),
+    );
+    if (mounted) _load();
+  }
+
   Future<void> _editHero() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const CharacterCreationScreen(isEditMode: true)),
@@ -107,7 +117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_loading) {
       return const Scaffold(
         backgroundColor: Rb.bg,
-        body: Center(child: CircularProgressIndicator(color: Rb.green)),
+        body: const LoadingRunner(),
       );
     }
 
@@ -173,7 +183,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 radius: 12,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 onTap: widget.onBackTap,
-                child: const Text('◀',
+                child: const EmojiText('◀',
                     style: TextStyle(
                         color: Color(0xFF232527),
                         fontSize: 16,
@@ -264,7 +274,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     radius: 10,
                     gloss: true,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: BlockText('⭐ LV $level', size: 13, stroke: 3.5),
+                    child: LevelUpBurst(
+                      level: level,
+                      bleed: 22,
+                      child: BlockText('⭐ LV $level', size: 13, stroke: 3.5),
+                    ),
                   ),
                 ),
                 Positioned(
@@ -278,6 +292,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     onTap: _editHero,
                     child: const BlockText('✏️ EDIT HERO', size: 11, stroke: 3),
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  top: 90,
+                  child: PressBlock(
+                    color: Rb.orange,
+                    edge: Rb.orangeEdge,
+                    depth: 4,
+                    radius: 10,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    onTap: _pickHero,
+                    child: const BlockText('🦸 CHOOSE HERO', size: 11, stroke: 3),
                   ),
                 ),
                 Positioned(
@@ -358,7 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('💎', style: TextStyle(fontSize: 26)),
+          const EmojiText('💎', style: TextStyle(fontSize: 26)),
           const SizedBox(width: 10),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -412,7 +439,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               radius: 12,
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
               child: Column(children: [
-                Text(emoji, style: const TextStyle(fontSize: 20)),
+                EmojiText(emoji, style: const TextStyle(fontSize: 20)),
                 FittedBox(
                     fit: BoxFit.scaleDown,
                     child: BlockText(v, size: 18, stroke: 4)),
@@ -500,7 +527,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: SizedBox(
                   width: 40,
                   height: 40,
-                  child: Center(child: Text(emoji, style: const TextStyle(fontSize: 22))),
+                  child: Center(child: EmojiText(emoji, style: const TextStyle(fontSize: 22))),
                 ),
               ),
               const SizedBox(width: 10),
@@ -651,7 +678,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Opacity(
                     opacity: a.$3 ? 1 : 0.35,
-                    child: Text(a.$3 ? a.$1 : '🔒', style: const TextStyle(fontSize: 28)),
+                    child: EmojiText(a.$3 ? a.$1 : '🔒', style: const TextStyle(fontSize: 28)),
                   ),
                   const SizedBox(height: 4),
                   FittedBox(

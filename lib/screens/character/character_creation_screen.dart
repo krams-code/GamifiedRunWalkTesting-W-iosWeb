@@ -3,13 +3,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/character_profile.dart';
-import '../../widgets/avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
-import '../../widgets/avatar_preview.dart';
+import '../../models/hero_roster.dart';
+import '../../widgets/hero_rig.dart';
 import '../../widgets/block_inputs.dart';
 import '../../widgets/block_ui.dart';
 import '../../models/outfit_catalog.dart';
 import '../../models/tutorial_progress.dart';
 import '../main_shell.dart';
+import '../../widgets/emoji_icons.dart';
 
 class CharacterCreationScreen extends StatefulWidget {
   final bool isEditMode; // true when opened from Profile to tweak appearance
@@ -32,6 +33,8 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
   // height/weight), skin tone and hair colour are.
   HairStyle _hairStyle = HairStyle.wavyMane;
   String _hairColor = kHairColorPresets[0];
+
+  String _heroId = kDefaultHeroId;
 
   bool _saving = false;
   bool _loadingExisting = true;
@@ -163,6 +166,8 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
         if (!widget.isEditMode) ...{
           // brand-new hero -> the free starter pack, nothing else
           ...StarterPack.toFirestore(),
+          'hero_id': _heroId,
+          'owned_heroes': FieldValue.arrayUnion([_heroId]),
           'owned_items': FieldValue.arrayUnion(StarterPack.ownedItems),
           // ...and show the onboarding tutorial once
           'tutorial_done': false,
@@ -225,17 +230,13 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
                       _weightField(),
                     ]),
                     const SizedBox(height: 16),
-                    _panel('🎨 LOOK', [
-                      _label('SKIN TONE'),
-                      _swatchRow(kSkinTonePresets, _skinTone,
-                          (hex) => setState(() => _skinTone = hex)),
-                      const SizedBox(height: 18),
-                      _label('HAIR COLOR'),
-                      _swatchRow(_hairColorChoices, _hairColor,
-                          (hex) => setState(() => _hairColor = hex)),
-                      const SizedBox(height: 18),
-                      _starterPackNote(),
-                    ]),
+                    if (!widget.isEditMode) ...[
+                      _panel('🦸 CHOOSE YOUR HERO', [
+                        _label('YOU CAN UNLOCK MORE HEROES LATER'),
+                        const SizedBox(height: 8),
+                        _heroChoices(),
+                      ]),
+                    ],
                     const SizedBox(height: 24),
                     NeonBlueButton(
                       label: widget.isEditMode ? 'SAVE CHANGES' : 'BEGIN YOUR JOURNEY',
@@ -252,6 +253,36 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
     );
   }
 
+  Widget _heroChoices() => Row(
+        children: [
+          for (final h in kHeroes.where((x) => x.starter))
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: PressBlock(
+                  color: _heroId == h.id ? Rb.gold : h.color,
+                  edge: _heroId == h.id ? Rb.goldEdge : h.edge,
+                  depth: 4,
+                  radius: 12,
+                  padding: const EdgeInsets.all(6),
+                  onTap: () => setState(() => _heroId = h.id),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 84,
+                        child: HeroStill(
+                            heroId: h.id, tier: _previewProfile.bodyTier),
+                      ),
+                      const SizedBox(height: 4),
+                      BlockText(h.name, size: 11, stroke: 3),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+
   Widget _header() => Block(
         color: Rb.hud,
         edge: Rb.hudEdge,
@@ -267,7 +298,7 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
                 radius: 12,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 onTap: () => Navigator.of(context).pop(),
-                child: const Text('◀',
+                child: const EmojiText('◀',
                     style: TextStyle(
                         color: Color(0xFF232527),
                         fontSize: 16,
@@ -334,34 +365,13 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.only(top: 10, bottom: 18),
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    clipBehavior: Clip.none,
-                    child: SizedBox(
-                      width: kSpriteWidth,
-                      height: kSpriteHeight + 44, // headroom for tall hair
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Positioned(
-                            left: 0,
-                            top: 44,
-                            width: kSpriteWidth,
-                            height: kSpriteHeight,
-                            child: AvatarPreview(
-                              bodySize: p.bodyTier.id,
-                              expression: p.faceExpression.id,
-                              hairStyle: p.hairStyle.id,
-                              activeGear: StarterPack.activeOutfit,
-                              skinTone: p.skinTone,
-                              hairColor: p.hairColor,
-                              filterQuality: FilterQuality.none,
-                              gender: _gender,
-                            ),
-                          ),
-                        ],
-                      ),
+                  padding: const EdgeInsets.only(top: 14, bottom: 22),
+                  child: Center(
+                    child: HeroRig(
+                      heroId: _heroId,
+                      tier: p.bodyTier,
+                      pose: RigPose.idle,
+                      height: 290,
                     ),
                   ),
                 ),

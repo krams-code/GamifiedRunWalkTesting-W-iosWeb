@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart' hide ActivityType;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,12 +11,13 @@ import 'package:hakbanghero/models/activity_model.dart';
 import 'package:hakbanghero/models/daily_quest_definitions.dart';
 import 'package:hakbanghero/models/ghost_run.dart';
 import '../models/run_mode.dart';
-import '../services/friends_service.dart';
+import '../services/run_saver.dart';
 
 import '../challenges/challenge_audio.dart';
 import '../challenges/challenge_engine.dart';
 import '../models/tutorial_progress.dart';
 import '../widgets/block_ui.dart';
+import '../widgets/lottie_fx.dart';
 import '../widgets/post_run_tutorial.dart';
 import '../widgets/pre_run_view.dart';
 import '../widgets/session_views.dart';
@@ -154,6 +156,10 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     );
 
     _fadeCtrl.forward();
+
+    // Send any run that was saved on the phone while offline.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) RunOutbox.flush(uid);
   }
 
   @override
@@ -280,17 +286,24 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   /// Why the last permission check failed: 'service' | 'denied' | 'forever'.
   String? _permIssue;
 
+  // GPS chip: 0 timer-only, 1 searching, 2 weak, 3 good
+  int _gpsStatus = 1;
+  bool? _lastIntervalFast;
+
   Future<bool> _requestPermission() async {
     _permIssue = null;
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
+      if (!await Geolocator.isLocationServiceEnabled()
+          .timeout(const Duration(seconds: 6), onTimeout: () => true)) {
         _permIssue = 'service';
         return false;
       }
 
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+        permission = await Geolocator.requestPermission()
+            .timeout(const Duration(seconds: 20),
+                onTimeout: () => LocationPermission.denied);
       }
       if (permission == LocationPermission.deniedForever) {
         _permIssue = 'forever';
@@ -385,12 +398,14 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     if (!mounted) return;
     switch (choice) {
       case 'nogps':
-        await _startTracking(useGps: false);
+        setState(() => _gpsStatus = 0); // timer-only: run is already going
         break;
       case 'retry':
-        await _startTracking();
+        await _attachGps();
         break;
       default:
+        _timer?.cancel();
+        _positionSub?.cancel();
         setState(() => _phase = _Phase.preRun);
     }
   }
@@ -398,15 +413,6 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   // ── START TRACKING ─────────────────────────────────────────────────────────
 
   Future<void> _startTracking({bool useGps = true}) async {
-    if (useGps) {
-      final granted = await _requestPermission();
-      if (!mounted) return;
-      if (!granted) {
-        await _onLocationBlocked();
-        return;
-      }
-    }
-
     _positionSub?.cancel();
     _timer?.cancel();
 
@@ -435,6 +441,8 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
       _lastPosition = null;
       _lastMoveAt = null;
+      _gpsStatus = useGps ? 1 : 0;
+      _lastIntervalFast = null;
 
       _newlyCompletedQuests = [];
       _summaryChallenges = [];
@@ -450,12 +458,26 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
             _elapsedSeconds++;
           });
           _tickChallenge();
+          _intervalCue();
           _checkStageLimits();
         }
       },
     );
 
     if (!useGps) return; // timer-only run
+    await _attachGps();
+  }
+
+  /// Ask for location AFTER the run is already going, so a slow or dismissed
+  /// permission prompt can never freeze the start.
+  Future<void> _attachGps() async {
+    final granted = await _requestPermission();
+    if (!mounted) return;
+    if (!granted) {
+      await _onLocationBlocked();
+      return;
+    }
+    _positionSub?.cancel();
 
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
@@ -469,6 +491,9 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         if (!mounted) {
           return;
         }
+
+        final st = pos.accuracy > 35 ? 2 : 3;
+        if (st != _gpsStatus) setState(() => _gpsStatus = st);
 
         final speedKmh =
             (pos.speed * 3.6).clamp(0.0, 60.0);
@@ -541,9 +566,28 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
+  /// Interval Run: buzz + sound whenever FAST and EASY swap.
+  void _intervalCue() {
+    if (!_mode.isInterval || _phase != _Phase.tracking) return;
+    final ph = RunMode.intervalAt(_elapsedSeconds);
+    if (ph == null) return;
+    if (_lastIntervalFast != null && _lastIntervalFast != ph.fast) {
+      HapticFeedback.heavyImpact();
+      SystemSound.play(SystemSoundType.alert);
+    }
+    _lastIntervalFast = ph.fast;
+  }
+
   /// Stage target reached -> STAGE CLEARED. Clock at zero -> TIME UP.
   void _checkStageLimits() {
-    if (_phase != _Phase.tracking || _ending || !_mode.isStage) return;
+    if (_phase != _Phase.tracking || _ending) return;
+    if (_mode.isInterval) {
+      if (_clockLeftSeconds == 0) {
+        _endSession(outcome: 'INTERVALS DONE!', good: true);
+      }
+      return;
+    }
+    if (!_mode.isStage) return;
     final target = _mode.targetKm;
     if (target != null && _distanceKm >= target) {
       _endSession(outcome: 'STAGE CLEARED!', good: true);
@@ -661,201 +705,46 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       _isSaving = true;
     });
 
-    try {
-      final user =
-          FirebaseAuth.instance.currentUser;
-
-      if (user != null) {
-        final db =
-            FirebaseFirestore.instance;
-
-        final userRef =
-            db.collection('users').doc(user.uid);
-
-        final actRef =
-            userRef.collection('activities');
-
-        // 1. Save activity document.
-        await actRef.add({
-          ...session.toFirestore(),
-          if (challengeRecords.isNotEmpty)
-            'challenges':
-                challengeRecords.map((r) => r.toMap()).toList(),
-          if (ghostResult != null) 'ghost': ghostResult.toMap(),
-          'mode': _mode.id,
-          'reward_mult': mult,
-          if (_outcome != null) 'stage_result': _outcome,
-        });
-
-        // 2. Update user totals.
-        await userRef.update({
-          'total_km':
-              FieldValue.increment(
-            session.distanceKm,
-          ),
-          'total_sessions':
-              FieldValue.increment(1),
-          'xp':
-              FieldValue.increment(xp),
-          'coins':
-              FieldValue.increment(coins),
-          // Sudden-quest bonuses (Mana Crystals are the `gems` field).
-          if (modeGems + ghostGems > 0)
-            'gems': FieldValue.increment(modeGems + ghostGems),
-          if (lootChests > 0)
-            'loot_chests': FieldValue.increment(lootChests),
-        });
-
-        // 3. Daily quest transaction.
-        final todayStr =
-            _todayDateString();
-
-        final completedQuests =
-            <DailyQuest>[];
-
-        await db.runTransaction(
-          (txn) async {
-            final snap =
-                await txn.get(userRef);
-
-            final data =
-                snap.data() ?? {};
-
-            final storedDate =
-                data['daily_progress_date']
-                        as String? ??
-                    '';
-
-            double dailyKm =
-                (data['daily_progress_km']
-                            as num?)
-                        ?.toDouble() ??
-                    0.0;
-
-            Map<String, dynamic> claimedMap =
-                Map<String, dynamic>.from(
-              data['daily_quests_claimed']
-                      as Map? ??
-                  {},
-            );
-
-            // Reset daily progress.
-            if (storedDate != todayStr) {
-              dailyKm = 0.0;
-              claimedMap = {};
-            }
-
-            // Add session distance.
-            dailyKm +=
-                session.distanceKm;
-
-            int crystalsToAdd = 0;
-            Map<String, dynamic>? recordUpdate;
-
-            // Check quest thresholds.
-            for (final quest
-                in kDailyQuests) {
-              if (claimedMap[quest.id] ==
-                  true) {
-                continue;
-              }
-
-              if (quest.beforeHour != null &&
-                  sessionStart.hour >=
-                      quest.beforeHour!) {
-                continue;
-              }
-
-              if (dailyKm >=
-                  quest.thresholdKm) {
-                claimedMap[quest.id] =
-                    true;
-
-                crystalsToAdd +=
-                    quest.crystalReward;
-
-                completedQuests.add(
-                  quest,
-                );
-              }
-            }
-
-            // Stage record: stars + first-clear bonus (cleared stages only).
-            if (_mode.isStage && _outcomeGood) {
-              final all = Map<String, dynamic>.from(
-                  data['stage_records'] as Map? ?? {});
-              final old = Map<String, dynamic>.from(
-                  all[_mode.id] as Map? ?? {});
-              final oldStars = (old['stars'] as num?)?.toInt() ?? 0;
-              final oldBest = (old['best_secs'] as num?)?.toInt() ?? 0;
-              final oldClears = (old['clears'] as num?)?.toInt() ?? 0;
-              final stars = _mode.starsFor(_elapsedSeconds);
-              final first = oldStars == 0;
-              final newStars = stars > oldStars ? stars - oldStars : 0;
-              final bonus = (first ? _mode.firstClearGems : 0) +
-                  newStars * RunMode.starGems;
-              all[_mode.id] = {
-                'stars': math.max(stars, oldStars),
-                'best_secs': oldBest > 0
-                    ? math.min(oldBest, _elapsedSeconds)
-                    : _elapsedSeconds,
-                'clears': oldClears + 1,
-              };
-              recordUpdate = all;
-              crystalsToAdd += bonus;
-              _stageStars = stars;
-              _stageBonusGems = bonus;
-              _stageFirstClear = first;
-              // first clear of this rank opens the next one (if there is one)
-              RunMode? opened;
-              if (first) {
-                for (final m in kStageModes) {
-                  if (m.requiresId == _mode.id) opened = m;
-                }
-              }
-              _unlockedRank = opened;
-            }
-
-            final Map<String, dynamic>
-                updates = {
-              'daily_progress_km':
-                  dailyKm,
-              'daily_progress_date':
-                  todayStr,
-              'daily_quests_claimed':
-                  claimedMap,
-              // feeds "friends this week" on the RUN tab
-              ...FriendsService.weekFields(
-                data,
-                session.distanceKm,
-              ),
-            };
-
-            if (recordUpdate != null) {
-              updates['stage_records'] = recordUpdate;
-            }
-
-            if (crystalsToAdd > 0) {
-              updates['gems'] =
-                  FieldValue.increment(
-                crystalsToAdd,
-              );
-            }
-
-            txn.update(
-              userRef,
-              updates,
-            );
-          },
-        );
-
-        _newlyCompletedQuests =
-            completedQuests;
-      }
-    } catch (e) {
-      debugPrint(
-        'Error saving activity: $e',
+    _savedOffline = false;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final fields = session.toFirestore()
+        ..['startTime'] = session.startTime.millisecondsSinceEpoch
+        ..['endTime'] = session.endTime.millisecondsSinceEpoch;
+      final payload = RunPayload(
+        id: '${session.startTime.millisecondsSinceEpoch}',
+        uid: user.uid,
+        modeId: _mode.id,
+        outcome: _outcome,
+        good: _outcomeGood,
+        rewardMult: mult,
+        fields: fields,
+        challenges: challengeRecords.map((r) => r.toMap()).toList(),
+        ghost: ghostResult?.toMap(),
+        xp: xp,
+        coins: coins,
+        gems: modeGems + ghostGems,
+        lootChests: lootChests,
+        elapsedSeconds: _elapsedSeconds,
       );
+      try {
+        final r = await RunSaver.save(payload).timeout(RunSaver.timeout);
+        _newlyCompletedQuests = r.completedQuests;
+        _stageStars = r.stars;
+        _stageBonusGems = r.bonusGems;
+        _stageFirstClear = r.firstClear;
+        _unlockedRank = r.unlockedRank;
+        // connection is fine: also send any run that was waiting
+        RunOutbox.flush(user.uid);
+      } catch (e) {
+        // Offline or too slow: keep the run on the phone, send it later.
+        debugPrint('Run saved to outbox: $e');
+        _savedOffline = true;
+        await RunOutbox.enqueue(payload);
+        if (_mode.isStage && _outcomeGood) {
+          _stageStars = _mode.starsFor(_elapsedSeconds);
+        }
+      }
     }
 
     if (mounted) {
@@ -865,14 +754,6 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     }
 
     _showSummarySheet(session);
-  }
-
-  String _todayDateString() {
-    final now = DateTime.now();
-
-    return '${now.year}-'
-        '${now.month.toString().padLeft(2, '0')}-'
-        '${now.day.toString().padLeft(2, '0')}';
   }
 
   // ── SUMMARY ────────────────────────────────────────────────────────────────
@@ -888,6 +769,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       builder: (_) => SessionSummarySheet(
         session: session,
         isSaving: _isSaving,
+        queued: _savedOffline,
         completedQuests:
             _newlyCompletedQuests,
         challenges: _summaryChallenges,
@@ -906,6 +788,8 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   }
 
   bool _tutorialLaunching = false;
+  bool _savedOffline = false;
+
 
   /// DONE on the Session Summary.
   ///
@@ -1005,7 +889,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       case _Phase.warmUp:
         return WarmUpView(
           activityType: _userPick,
-          onComplete: _startTracking,
+          onComplete: () => _startTracking(),
           onSkip: _skipWarmUp,
           onBack: () => setState(() =>
               _phase = _mode.isStage ? _Phase.briefing : _Phase.preRun),
@@ -1022,7 +906,8 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         return _buildTracking();
 
       case _Phase.summary:
-        return const SizedBox.shrink();
+        // The hero runs on the spot while the run is being saved.
+        return const LoadingRunner(label: 'SAVING YOUR RUN...');
     }
   }
 
@@ -1056,6 +941,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       clockLow: left != null && left <= 60,
       // Novice and Endless have no sudden events at all
       challenge: _challenge.enabled ? _challenge : null,
+      gpsStatus: _gpsStatus,
       ghost: _raceGhost,
       elapsedSeconds: _elapsedSeconds,
     );

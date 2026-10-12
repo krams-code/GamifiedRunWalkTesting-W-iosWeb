@@ -9,6 +9,7 @@ import '../../models/activity_model.dart';
 import '../../services/friends_service.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/hero_bust.dart';
+import '../../widgets/emoji_icons.dart';
 
 /// LIVE DUEL ROOM — both players are on this screen at the same time.
 ///
@@ -576,7 +577,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(icon, style: const TextStyle(fontSize: 40)),
+              EmojiText(icon, style: const TextStyle(fontSize: 40)),
               const SizedBox(height: 6),
               BlockText(title, size: 18, stroke: 4.5, color: color, align: TextAlign.center),
               const SizedBox(height: 6),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'emoji_icons.dart';
+
 // ═════════════════════════════════════════════════════════════════
 //  Roblox-style block UI kit
 //  Solid colour • thick dark border • hard (blur-free) drop shadow
@@ -82,31 +84,40 @@ class BlockText extends StatelessWidget {
       height: 1.1,
     );
     final overflow = maxLines == null ? null : TextOverflow.ellipsis;
+    final outline = base.copyWith(
+      foreground: Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeJoin = StrokeJoin.round
+        ..color = Colors.black,
+    );
+    final fill = base.copyWith(
+      color: color,
+      shadows: const [Shadow(offset: Offset(0, 2), color: Color(0x99000000))],
+    );
+    final hasIcons = containsMappedEmoji(text);
+    final iconSize = size * 1.15;
+    Widget layer(TextStyle st, bool placeholder) => hasIcons
+        ? Text.rich(
+            TextSpan(
+              children: emojiSpans(text,
+                  iconSize: iconSize, style: st, placeholder: placeholder),
+            ),
+            textAlign: align,
+            maxLines: maxLines,
+            overflow: overflow,
+          )
+        : Text(
+            text,
+            textAlign: align,
+            maxLines: maxLines,
+            overflow: overflow,
+            style: st,
+          );
     return Stack(
       children: [
-        Text(
-          text,
-          textAlign: align,
-          maxLines: maxLines,
-          overflow: overflow,
-          style: base.copyWith(
-            foreground: Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = stroke
-              ..strokeJoin = StrokeJoin.round
-              ..color = Colors.black,
-          ),
-        ),
-        Text(
-          text,
-          textAlign: align,
-          maxLines: maxLines,
-          overflow: overflow,
-          style: base.copyWith(
-            color: color,
-            shadows: const [Shadow(offset: Offset(0, 2), color: Color(0x99000000))],
-          ),
-        ),
+        layer(outline, true),
+        layer(fill, false),
       ],
     );
   }

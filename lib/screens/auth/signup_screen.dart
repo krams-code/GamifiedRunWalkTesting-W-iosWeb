@@ -8,6 +8,7 @@ import '../../widgets/block_ui.dart';
 import '../character/character_creation_screen.dart';
 import '../main_shell.dart';
 import '../../models/outfit_catalog.dart';
+import '../../widgets/emoji_icons.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -195,7 +196,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       radius: 12,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       onTap: () => Navigator.pop(context),
-                      child: const Text('◀',
+                      child: const EmojiText('◀',
                           style: TextStyle(
                               color: Color(0xFF232527),
                               fontSize: 16,

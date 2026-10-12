@@ -5,6 +5,9 @@ import 'screens/auth/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'firebase_options.dart';
 
+/// Run with  --dart-define=PERF_OVERLAY=true  to draw the frame graph.
+const bool kPerfOverlay = bool.fromEnvironment('PERF_OVERLAY');
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -21,6 +24,7 @@ class HakbangHeroApp extends StatelessWidget {
     return MaterialApp(
       title: 'HakbangHero',
       debugShowCheckedModeBanner: false,
+      showPerformanceOverlay: kPerfOverlay,
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF060C06),

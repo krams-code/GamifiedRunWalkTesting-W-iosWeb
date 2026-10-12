@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'block_ui.dart';
 import 'onboarding_tutorial.dart' show SpotlightPainter, kCoachDir;
 import 'tutorial_keys.dart';
+import 'emoji_icons.dart';
+import 'lottie_fx.dart';
 
 /// What the host app must provide for the Phase 2 walkthrough.
 class PostRunTutorialHooks {
@@ -306,11 +308,27 @@ class _PostRunOverlayState extends State<_PostRunOverlay>
                   ),
                 ),
               ),
+              if (hole != null && step.kind == _Kind.tap) _tapArrow(context, hole),
               _coachBox(context, step, hole),
             ],
           );
         },
       ),
+    );
+  }
+
+  /// Bouncing arrow above the nav block the player must tap.
+  Widget _tapArrow(BuildContext context, Rect hole) {
+    final mq = MediaQuery.of(context);
+    const s = 76.0;
+    final left =
+        (hole.center.dx - s / 2).clamp(4.0, mq.size.width - s - 4).toDouble();
+    return Positioned(
+      left: left,
+      top: hole.top - s + 4,
+      width: s,
+      height: s,
+      child: const FxLoop(Fx.arrowBounce),
     );
   }
 
@@ -337,7 +355,7 @@ class _PostRunOverlayState extends State<_PostRunOverlay>
                 height: 150,
                 width: 90,
                 child: Center(
-                    child: Text('🧑‍🏫', style: TextStyle(fontSize: 64))),
+                    child: EmojiText('🧑‍🏫', style: TextStyle(fontSize: 64))),
               ),
             ),
           ),

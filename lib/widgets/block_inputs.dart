@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'block_ui.dart';
+import 'emoji_icons.dart';
 
 /// Chunky light-gray input block: 3px black border + hard 4px bottom shadow.
 class BlockTextField extends StatelessWidget {
@@ -58,7 +59,7 @@ class BlockTextField extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.only(left: 12),
-                child: Text(icon, style: const TextStyle(fontSize: 20)),
+                child: EmojiText(icon, style: const TextStyle(fontSize: 20)),
               ),
               Expanded(
                 child: TextField(
@@ -184,7 +185,7 @@ class AuthBanner extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('🏃‍♂️', style: TextStyle(fontSize: 36)),
+                    const EmojiText('🏃‍♂️', style: TextStyle(fontSize: 36)),
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       child: BlockText(title, size: 28, stroke: 6),

@@ -7,6 +7,11 @@ import '../../widgets/avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
 import '../../widgets/avatar_preview.dart';
 import '../../utils/xp_milestones.dart';
 import '../../widgets/block_ui.dart';
+import '../../widgets/emoji_icons.dart';
+import '../../constants/app_icons.dart';
+import '../../widgets/pixel_icon.dart';
+import '../../state/user_doc.dart';
+import '../../widgets/lottie_fx.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onProfileTap;
@@ -94,17 +99,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (uid == null) {
       return const Scaffold(
         backgroundColor: Rb.bg,
-        body: Center(child: CircularProgressIndicator(color: Rb.green)),
+        body: const LoadingRunner(),
       );
     }
 
     return Scaffold(
       backgroundColor: Rb.bg,
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        stream: UserDoc.instance.stream,
+        initialData: UserDoc.instance.snapshotFor(uid),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator(color: Rb.green));
+            return const LoadingRunner();
           }
 
           final data = snapshot.data!.exists
@@ -509,7 +515,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: const Center(
                 child: Column(
                   children: [
-                    Text('🏃', style: TextStyle(fontSize: 30)),
+                    SizedBox(width: 84, height: 84, child: FxLoop(Fx.runLoader)),
                     SizedBox(height: 6),
                     Text(
                       'No runs yet — start your first session!',
@@ -709,7 +715,7 @@ class _RecentActivityList extends StatelessWidget {
                       width: 40,
                       height: 40,
                       child: Center(
-                        child: Text(_emojiForType(type), style: const TextStyle(fontSize: 20)),
+                        child: EmojiText(_emojiForType(type), style: const TextStyle(fontSize: 20)),
                       ),
                     ),
                   ),

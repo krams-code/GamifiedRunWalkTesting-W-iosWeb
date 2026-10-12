@@ -7,6 +7,9 @@ import '../utils/player_stats.dart';
 import 'avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
 import 'avatar_preview.dart';
 import 'block_ui.dart';
+import 'emoji_icons.dart';
+import '../state/user_doc.dart';
+import 'lottie_fx.dart';
 
 /// Global top bar shown on every tab (hidden during a run).
 /// Left: chunky Profile block + username/level. Right: currency chips.
@@ -30,9 +33,8 @@ class GlobalTopBar extends StatelessWidget {
         border: Border(bottom: BorderSide(color: Colors.black, width: 3)),
       ),
       child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: uid == null
-            ? null
-            : FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+        stream: uid == null ? null : UserDoc.instance.stream,
+        initialData: UserDoc.instance.snapshotFor(uid),
         builder: (context, snap) {
           final d = snap.data?.data() ?? <String, dynamic>{};
           final name = (d['username'] as String?)?.trim();
@@ -93,8 +95,11 @@ class GlobalTopBar extends StatelessWidget {
                           size: 16,
                           stroke: 4),
                     ),
-                    BlockText('LV $level  ▾ PROFILE',
-                        size: 10, stroke: 2.5, color: Rb.gold),
+                    LevelUpBurst(
+                      level: level,
+                      child: BlockText('LV $level  ▾ PROFILE',
+                          size: 10, stroke: 2.5, color: Rb.gold),
+                    ),
                   ],
                 ),
               ),
@@ -219,7 +224,7 @@ class _PlayerSheet extends StatelessWidget {
               radius: 12,
               padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
               child: Column(children: [
-                Text(emoji, style: const TextStyle(fontSize: 18)),
+                EmojiText(emoji, style: const TextStyle(fontSize: 18)),
                 FittedBox(
                     fit: BoxFit.scaleDown,
                     child: BlockText(value, size: 16, stroke: 4)),

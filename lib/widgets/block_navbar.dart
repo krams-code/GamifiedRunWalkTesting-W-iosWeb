@@ -142,11 +142,12 @@ class BlockNavBar extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text(
-                        '🏃',
-                        style: TextStyle(fontSize: 28),
+                      const PixelIconAnim(
+                        AppIcons.runFrames,
+                        size: 44,
+                        intervalMs: 260,
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       BlockText(
                         'RUN',
                         size: 14,

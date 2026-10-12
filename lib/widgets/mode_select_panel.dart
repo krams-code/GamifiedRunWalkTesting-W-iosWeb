@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../models/run_mode.dart';
 import 'block_ui.dart';
+import 'emoji_icons.dart';
+import 'lottie_fx.dart';
 
 /// Roblox-style Mode Selection Overlay, opened by the ▶ PLAY STAGE button.
 ///
@@ -14,15 +16,19 @@ import 'block_ui.dart';
 /// Resolves to the chosen [RunMode], or null if the player closes it.
 ///
 /// [records] is the user's `stage_records` map (stars per rank), if loaded.
+///
+/// [firstRun] = the brand-new-hero version: opens straight on the rank list,
+/// can't be closed, and the only rank that can be picked is NOVICE.
 Future<RunMode?> showModeSelectPanel(BuildContext context,
-    {Map<String, dynamic>? records, Object? seen}) {
+    {Map<String, dynamic>? records, Object? seen, bool firstRun = false}) {
   return showGeneralDialog<RunMode>(
     context: context,
-    barrierDismissible: true,
+    barrierDismissible: !firstRun,
     barrierLabel: 'Close',
     barrierColor: Colors.black.withValues(alpha: 0.72),
     transitionDuration: const Duration(milliseconds: 240),
     pageBuilder: (_, __, ___) => _ModePanel(
+      firstRun: firstRun,
       records: records,
       seen: seen is List ? seen.whereType<String>().toSet() : <String>{},
     ),
@@ -41,16 +47,23 @@ class _ModePanel extends StatefulWidget {
 
   /// Ranks whose NEW! badge the player has already acted on.
   final Set<String> seen;
-  const _ModePanel({this.records, this.seen = const {}});
+
+  /// Brand-new hero: must pick NOVICE (nothing else is open yet).
+  final bool firstRun;
+  const _ModePanel({this.records, this.seen = const {}, this.firstRun = false});
 
   @override
   State<_ModePanel> createState() => _ModePanelState();
 }
 
 class _ModePanelState extends State<_ModePanel> {
-  bool _pickingRank = false; // false = main menu, true = difficulty sub-menu
+  late bool _pickingRank = widget.firstRun; // false = main menu, true = ranks
 
-  void _close() => Navigator.of(context).pop();
+  void _close() {
+    if (widget.firstRun) return; // the first mode can't be skipped
+    Navigator.of(context).pop();
+  }
+
   void _pick(RunMode m) {
     if (_isNew(m)) _markSeen(m); // the player noticed it: retire the badge
     Navigator.of(context).pop(m);
@@ -72,6 +85,18 @@ class _ModePanelState extends State<_ModePanel> {
       });
     } catch (_) {/* the badge just shows once more */}
   }
+
+  Widget _startHereBadge() => Transform.rotate(
+        angle: -0.08,
+        child: Block(
+          color: const Color(0xFF5ED67B),
+          edge: const Color(0xFF1A6B30),
+          depth: 3,
+          radius: 8,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          child: const BlockText('START HERE', size: 12, stroke: 3.5),
+        ),
+      );
 
   Widget _newBadge() => Transform.rotate(
         angle: 0.1,
@@ -132,7 +157,7 @@ class _ModePanelState extends State<_ModePanel> {
   Widget _header() {
     return Row(
       children: [
-        if (_pickingRank) ...[
+        if (_pickingRank && !widget.firstRun) ...[
           PressBlock(
             color: Rb.hud,
             edge: Rb.hudEdge,
@@ -140,7 +165,7 @@ class _ModePanelState extends State<_ModePanel> {
             radius: 12,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             onTap: () => setState(() => _pickingRank = false),
-            child: const Text('◀',
+            child: const EmojiText('◀',
                 style: TextStyle(
                     color: Color(0xFF232527), fontSize: 16, fontWeight: FontWeight.w900)),
           ),
@@ -150,20 +175,26 @@ class _ModePanelState extends State<_ModePanel> {
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: BlockText(_pickingRank ? 'CHOOSE YOUR RANK' : 'SELECT MODE',
-                size: 21, stroke: 5),
+            child: BlockText(
+                widget.firstRun
+                    ? 'CHOOSE YOUR FIRST MODE'
+                    : (_pickingRank ? 'CHOOSE YOUR RANK' : 'SELECT MODE'),
+                size: 21,
+                stroke: 5),
           ),
         ),
-        const SizedBox(width: 8),
-        PressBlock(
-          color: Rb.red,
-          edge: Rb.redEdge,
-          depth: 4,
-          radius: 12,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          onTap: _close,
-          child: const BlockText('✕', size: 15, stroke: 3.5),
-        ),
+        if (!widget.firstRun) ...[
+          const SizedBox(width: 8),
+          PressBlock(
+            color: Rb.red,
+            edge: Rb.redEdge,
+            depth: 4,
+            radius: 12,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            onTap: _close,
+            child: const BlockText('✕', size: 15, stroke: 3.5),
+          ),
+        ],
       ],
     );
   }
@@ -179,6 +210,7 @@ class _ModePanelState extends State<_ModePanel> {
     double depth = 10,
     bool locked = false,
     Widget? badge,
+    bool burst = false, // freshly unlocked: play the unlock burst once
   }) {
     return PressBlock(
       color: color,
@@ -220,6 +252,8 @@ class _ModePanelState extends State<_ModePanel> {
                 ),
               ),
             ),
+            if (burst)
+              Positioned.fill(child: FxOnce(Fx.unlockBurst, fit: BoxFit.cover)),
             // thin colour bar keeps each rank's identity colour
             Positioned(left: 0, right: 0, top: 0, height: 6, child: ColoredBox(color: color)),
             // full width, so the picture fills the whole card evenly
@@ -249,6 +283,7 @@ class _ModePanelState extends State<_ModePanel> {
           color: Rb.orange,
           edge: Rb.orangeEdge,
           badge: kStageModes.any(_isNew) ? _newBadge() : null,
+          burst: kStageModes.any(_isNew),
           onTap: () => setState(() => _pickingRank = true),
           child: Column(
             children: [
@@ -274,13 +309,27 @@ class _ModePanelState extends State<_ModePanel> {
           asset: kEndless.mapAsset,
           color: kEndless.color,
           edge: kEndless.edge,
-          onTap: () => _pick(kEndless),
+          locked: !RunMode.isUnlocked(kEndless, widget.records),
+          badge: _isNew(kEndless) ? _newBadge() : null,
+          burst: _isNew(kEndless),
+          onTap: RunMode.isUnlocked(kEndless, widget.records)
+              ? () => _pick(kEndless)
+              : null,
           child: Column(
             children: [
-              const FittedBox(
+              FittedBox(
                 fit: BoxFit.scaleDown,
-                child: BlockText('\u267E\uFE0F ENDLESS RUN', size: 24, stroke: 5.5),
+                child: BlockText(
+                    '${RunMode.isUnlocked(kEndless, widget.records) ? '\u267E\uFE0F' : '\u{1F512}'} ENDLESS RUN',
+                    size: 24,
+                    stroke: 5.5),
               ),
+              if (!RunMode.isUnlocked(kEndless, widget.records))
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: BlockText('${kEndless.lockHint}',
+                      size: 12.5, stroke: 3.5, color: const Color(0xFFFFE066)),
+                ),
               const SizedBox(height: 4),
               const BlockText('THE CASUAL TRACKER',
                   size: 11, stroke: 3, color: Color(0xFFD7C8FF)),
@@ -290,6 +339,45 @@ class _ModePanelState extends State<_ModePanel> {
                 'No clock',
                 'No interruptions',
                 '+0.2x XP & Crystals per km',
+              ]),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _pictureCard(
+          asset: kInterval.mapAsset,
+          color: kInterval.color,
+          edge: kInterval.edge,
+          locked: !RunMode.isUnlocked(kInterval, widget.records),
+          badge: _isNew(kInterval) ? _newBadge() : null,
+          burst: _isNew(kInterval),
+          onTap: RunMode.isUnlocked(kInterval, widget.records)
+              ? () => _pick(kInterval)
+              : null,
+          child: Column(
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: BlockText(
+                    '${RunMode.isUnlocked(kInterval, widget.records) ? '\u26A1' : '\u{1F512}'} INTERVAL RUN',
+                    size: 24,
+                    stroke: 5.5),
+              ),
+              if (!RunMode.isUnlocked(kInterval, widget.records))
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: BlockText('${kInterval.lockHint}',
+                      size: 12.5, stroke: 3.5, color: const Color(0xFFFFE066)),
+                ),
+              const SizedBox(height: 4),
+              const BlockText('FAST, EASY, REPEAT',
+                  size: 11, stroke: 3, color: Color(0xFFBDEBFF)),
+              const SizedBox(height: 8),
+              _chips(const [
+                '6 rounds',
+                '1 min FAST / 1 min EASY',
+                '12 min',
+                '1.3x XP & Crystals',
               ]),
             ],
           ),
@@ -324,6 +412,25 @@ class _ModePanelState extends State<_ModePanel> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.firstRun) ...[
+          Block(
+            color: const Color(0xFF1E6B45),
+            edge: const Color(0xFF0B2E1D),
+            depth: 4,
+            radius: 12,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: SizedBox(
+              width: double.infinity,
+              child: BlockText(
+                'Start with NOVICE RANK. Clear it to unlock VANGUARD, SLAYER and ENDLESS RUN!',
+                size: 11.5,
+                stroke: 3,
+                align: TextAlign.center,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         Align(
           alignment: Alignment.centerRight,
           child: BlockText(
@@ -359,6 +466,8 @@ class _ModePanelState extends State<_ModePanel> {
       edge: m.edge,
       depth: 8,
       locked: locked,
+      badge: (widget.firstRun && !locked) ? _startHereBadge() : null,
+      burst: _isNew(m),
       onTap: locked ? null : () => _pick(m),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

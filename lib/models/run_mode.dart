@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../challenges/challenge_engine.dart';
 
 /// The two core game loops.
-enum RunLoop { stage, endless }
+enum RunLoop { stage, endless, interval }
 
 /// Which mid-run events a mode triggers.
-enum EventPlan { none, oneSprintQuest, paceTrials }
+enum EventPlan { none, oneSprintQuest, paceTrials, intervals }
 
 /// One selectable way to run: a Stage rank (Novice / Vanguard / Slayer) or
 /// the casual Endless Run. Everything the run screen needs lives here, so
@@ -81,8 +81,8 @@ class RunMode {
     return n;
   }
 
-  /// Is [m] open? Novice and Endless always are; each rank needs the one
-  /// before it cleared at least once.
+  /// Is [m] open? Only Novice is always open; Vanguard and Slayer need the
+  /// rank before them cleared, and Endless needs Novice cleared once.
   static bool isUnlocked(RunMode m, Object? records) {
     final need = m.requiresId;
     return need == null || starsIn(records, need) > 0;
@@ -120,6 +120,26 @@ class RunMode {
 
   bool get isStage => loop == RunLoop.stage;
   bool get isEndless => loop == RunLoop.endless;
+  bool get isInterval => loop == RunLoop.interval;
+
+  // ── Interval Run: FAST / EASY rounds on a fixed clock ──────────────────
+  static const int intervalRounds = 6;
+  static const int intervalFastSeconds = 60;
+  static const int intervalEasySeconds = 60;
+  static const int intervalCycle = intervalFastSeconds + intervalEasySeconds;
+  static const int intervalTotalSeconds = intervalRounds * intervalCycle;
+
+  /// Where an Interval Run is after [elapsed] seconds (null once finished).
+  static IntervalPhase? intervalAt(int elapsed) {
+    if (elapsed < 0 || elapsed >= intervalTotalSeconds) return null;
+    final within = elapsed % intervalCycle;
+    final fast = within < intervalFastSeconds;
+    return IntervalPhase(
+      round: elapsed ~/ intervalCycle + 1,
+      fast: fast,
+      secondsLeft: fast ? intervalFastSeconds - within : intervalCycle - within,
+    );
+  }
   int? get clockSeconds => clockMinutes == null ? null : clockMinutes! * 60;
 
   String get multLabel => '${rewardMult.toStringAsFixed(1)}x';
@@ -137,6 +157,8 @@ class RunMode {
         return '1 random Mid-Run Sprint Quest';
       case EventPlan.paceTrials:
         return 'Multiple high-velocity Pace Trials';
+      case EventPlan.intervals:
+        return '$intervalRounds rounds: 1 min FAST, 1 min EASY';
     }
   }
 
@@ -145,6 +167,7 @@ class RunMode {
   ChallengeConfig? get challengeConfig {
     switch (events) {
       case EventPlan.none:
+      case EventPlan.intervals: // paced by the run screen, not the engine
         return null;
       case EventPlan.oneSprintQuest:
         // exactly one Sprint Blitz, never a Pace Keeper
@@ -183,6 +206,11 @@ class RunMode {
           '\u26A1 1 random Sprint Quest will appear mid-run: cover '
               '${cfg!.sprintTargetMeters.round()} m in ${cfg.sprintSeconds} s '
               '(+${cfg.sprintBonusXp} XP, +${cfg.sprintBonusGems} \u{1F48E}).',
+        ];
+      case EventPlan.intervals:
+        return const [
+          '6 rounds of 1 min FAST then 1 min EASY (12 min total).',
+          'The screen and a buzz tell you when to switch. Finish all 6 rounds!',
         ];
       case EventPlan.paceTrials:
         final m = cfg!.paceSeconds ~/ 60, sec = cfg.paceSeconds % 60;
@@ -265,7 +293,39 @@ const RunMode kEndless = RunMode(
   color: Color(0xFF5B3A9E),
   edge: Color(0xFF2A1A52),
   mapAsset: 'assets/images/maps/open_road.jpg',
+  // Endless opens with the first clear of NOVICE RANK, so a brand-new hero
+  // starts with exactly ONE choice: run NOVICE to unlock the rest.
+  requiresId: 'stage_novice',
+);
+
+const RunMode kInterval = RunMode(
+  id: 'interval',
+  loop: RunLoop.interval,
+  emoji: '\u26A1',
+  name: 'INTERVAL RUN',
+  mapName: 'The Thunder Track',
+  targetKm: null,
+  clockMinutes: 12,
+  rewardMult: 1.3,
+  events: EventPlan.intervals,
+  color: Color(0xFF0097C4),
+  edge: Color(0xFF005A75),
+  mapAsset: 'assets/images/maps/open_road.jpg',
+  // like Endless, it opens with the first clear of NOVICE RANK
+  requiresId: 'stage_novice',
 );
 
 const List<RunMode> kStageModes = [kNovice, kVanguard, kSlayer];
-const List<RunMode> kRunModes = [kNovice, kVanguard, kSlayer, kEndless];
+const List<RunMode> kRunModes = [kNovice, kVanguard, kSlayer, kEndless, kInterval];
+
+/// One moment of an Interval Run.
+class IntervalPhase {
+  final int round; // 1..intervalRounds
+  final bool fast; // true = FAST, false = EASY
+  final int secondsLeft; // in this FAST / EASY block
+  const IntervalPhase({
+    required this.round,
+    required this.fast,
+    required this.secondsLeft,
+  });
+}

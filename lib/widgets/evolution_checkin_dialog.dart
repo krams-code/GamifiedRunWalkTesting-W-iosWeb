@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../models/body_composition.dart';
 import '../models/character_profile.dart';
+import '../models/hero_items.dart';
+import '../models/hero_roster.dart';
 import '../state/evolution_state.dart';
 import 'block_ui.dart';
 import 'hero_sprite.dart';
@@ -779,6 +781,8 @@ class _EvoCard extends StatelessWidget {
                           equippedClothes: clothes,
                           height: 150,
                           gender: p.gender,
+                          heroId: heroIdOf(data),
+                          outfit: outfitOf(data),
                         ),
                       ),
               ),

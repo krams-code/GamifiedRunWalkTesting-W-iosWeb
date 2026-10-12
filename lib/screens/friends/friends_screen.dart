@@ -11,6 +11,7 @@ import '../../widgets/hero_bust.dart';
 import '../../widgets/hero_sprite.dart';
 import 'duel_room_screen.dart';
 import 'chat_screen.dart';
+import '../../widgets/emoji_icons.dart';
 
 typedef _Doc = QueryDocumentSnapshot<Map<String, dynamic>>;
 
@@ -156,7 +157,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(icon, style: const TextStyle(fontSize: 40)),
+              EmojiText(icon, style: const TextStyle(fontSize: 40)),
               const SizedBox(height: 6),
               BlockText(title, size: 18, stroke: 4.5, color: color, align: TextAlign.center),
               const SizedBox(height: 6),
@@ -889,7 +890,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   radius: 12,
                   padding: const EdgeInsets.all(10),
                   onTap: () => _challengeSheet(f.id, name),
-                  child: const Text('⚔️', style: TextStyle(fontSize: 18)),
+                  child: const EmojiText('⚔️', style: TextStyle(fontSize: 18)),
                 ),
               ],
             ),
@@ -1147,7 +1148,7 @@ class _Bust extends StatelessWidget {
                   maxHeight: double.infinity,
                   child: Transform.translate(
                     offset: const Offset(0, 56 * 0.2),
-                    child: HeroSprite.fromData(s.data, height: 56 * 2.4),
+                    child: HeroSprite.fromData(s.data, height: 56 * 2.4, bust: true),
                   ),
                 ),
               );

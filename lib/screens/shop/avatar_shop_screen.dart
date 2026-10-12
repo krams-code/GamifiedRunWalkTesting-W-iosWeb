@@ -1,225 +1,80 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../constants/asset_paths.dart';
-import '../../models/character_profile.dart';
-import '../../models/outfit_catalog.dart';
-import '../../widgets/avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
-import '../../widgets/avatar_preview.dart';
-import '../../utils/player_stats.dart' show LevelProgress;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
 import '../../constants/app_icons.dart';
+import '../../models/body_composition.dart';
+import '../../models/character_profile.dart' show BodyTier, BodyCompositionTierX;
+import '../../models/hero_items.dart';
+import '../../models/hero_progress.dart';
+import '../../models/hero_roster.dart';
+import '../../state/evolution_state.dart';
 import '../../utils/activity_snapshot.dart';
 import '../../utils/weekly.dart';
 import '../../widgets/block_ui.dart';
+import '../../widgets/hero_rig.dart';
 import '../../widgets/pixel_icon.dart';
+import '../../state/user_doc.dart';
+import '../../widgets/lottie_fx.dart';
 
 // ═════════════════════════════════════════════════════════════════
-//  Avatar Item Shop — direct purchase (replaces the gacha screen)
+//  HERO SHOP (same layout as the old Avatar Shop)
 //
-//  Firestore (users/{uid}) fields used:
-//    gems            int      currency
-//    total_km        double   milestone unlocks
-//    owned_items     [String] bought item ids
-//    hair_style / face_expression / equipped_clothes / background_id
-//                             saved look
+//  Tabs: FEATURED, HEROES, then one tab per slot (head, face, top...).
+//  Tap anything to TRY IT ON the live hero; BUY saves the look and pays for
+//  whatever is not owned yet (coins and/or gems).
 //
-//  LOCKING (see isShopItemUnlocked):
-//    free item          price 0, no km gate  -> always unlocked (starter pack)
-//    premium item       price > 0            -> unlocked only AFTER it is bought:
-//                                               gems are subtracted in a
-//                                               transaction, then the id is
-//                                               added to owned_items
-//    milestone item     unlockKm > 0, price 0-> unlocked automatically once
-//                                               total_km reaches unlockKm
-//    XP milestone item  unlockLevel > 1, price 0 -> unlocked automatically once
-//                                               the hero reaches that level
-//    premium + km gate  both must be satisfied
+//  Firestore (users/{uid}):
+//    coins, gems, total_km, xp, stage_records    currencies + unlock rules
+//    owned_items [id], owned_heroes [id]         bought things
+//    hero_id, hero_outfit {slot: id}             the saved look
+//    streak_claims [key]                         claimed streak rewards
+//
+//  Got three ways (see hero_items.dart / hero_roster.dart):
+//    FREE (starters)  ·  EARNED (level, km, rank clear, stars)  ·  BOUGHT
 // ═════════════════════════════════════════════════════════════════
 
-// ───────────────────────── Catalog ─────────────────────────
+/// Weekly pick discount.
+const double kWeeklyDiscount = 0.25;
 
-enum ShopCategory { hair, colors, clothes, faces, backgrounds }
-
-class ShopItem {
-  final String id;          // must match HairStyle / FaceExpression / clothes / background ids
-  final ShopCategory category;
-  final String name;
-  final int price;          // gems; 0 = free
-  final double unlockKm;    // > 0 = locked until this many total km
-  final int unlockLevel;    // > 1 = locked until the hero reaches this XP level
-  final String? asset;      // PNG key (hair / clothes / faces)
-  final String emoji;       // fallback icon when there's no art yet
-  final String? colorHex;   // hair-colour items: '#RRGGBB'
-  final String? slot;       // Gear slot: weapon | armor | boots | ring
-
-  const ShopItem({
-    required this.id,
-    required this.category,
-    required this.name,
-    this.price = 0,
-    this.unlockKm = 0,
-    this.unlockLevel = 0,
-    this.asset,
-    this.emoji = '📦',
-    this.colorHex,
-    this.slot,
-  });
-
-  /// Free and not milestone-gated = everyone owns it from the start.
-  bool get isFree => price == 0 && unlockKm == 0 && unlockLevel <= 1;
-
-  /// Short reason shown on locks (km gate and/or level gate).
-  String lockLabel(double totalKm, int level) {
-    if (unlockLevel > level) return 'Reach LV $unlockLevel to Unlock';
-    return 'Run ${unlockKm.toStringAsFixed(1)} Total KM to Unlock';
-  }
-
-  /// Can be shown on the avatar (has art, or is a background).
-  bool get equippable =>
-      category == ShopCategory.backgrounds ||
-      category == ShopCategory.colors ||
-      asset != null;
-}
-
-/// The single source of truth for "can this player use [item] right now?".
-/// The shop AND the gear chest both call it, so they can never disagree.
-bool isShopItemUnlocked(
-  ShopItem item, {
-  required Set<String> owned,
-  required double totalKm,
-  int level = 1,
-}) {
-  if (item.isFree) return true; // starter pack
-  if (item.unlockLevel > level) return false; // XP milestone not reached yet
-  if (item.unlockKm > totalKm) return false; // milestone not reached yet
-  if (item.price == 0) return true; // pure milestone reward: auto-unlocks
-  return owned.contains(item.id); // premium: only after the purchase
-}
-
-/// Only items whose art really exists in assets/. Add a line to add an item.
-const List<ShopItem> kShopCatalog = [
-  // 💇 HAIR (ids = HairStyle ids)
-  ShopItem(id: 'short_crop', category: ShopCategory.hair, name: 'Short Crop',
-      asset: '$kHairDir/hair_14_short_crop.png', emoji: '💇'),
-  ShopItem(id: 'warrior_spiky', category: ShopCategory.hair, name: 'Warrior Spiky',
-      unlockLevel: 2, asset: '$kHairDir/hair_01_warrior_spiky.png', emoji: '💇'),
-  ShopItem(id: 'classic_pompadour', category: ShopCategory.hair, name: 'Pompadour',
-      price: 150, asset: '$kHairDir/hair_03_classic_pompadour.png', emoji: '💇'),
-  // ⭐ starter hair (free for every new hero, see StarterPack)
-  ShopItem(id: 'wavy_mane', category: ShopCategory.hair, name: 'Wavy Mane',
-      asset: '$kHairDir/hair_05_wavy_mane.png', emoji: '💇'),
-  ShopItem(id: 'long_flowing', category: ShopCategory.hair, name: 'Long & Flowing',
-      price: 250, unlockKm: 25, asset: '$kHairDir/hair_07_long_flowing.png', emoji: '💇'),
-
-  // 🎨 HAIR COLOURS (tint over any hair style)
-  ShopItem(id: 'hc_1A1A1A', category: ShopCategory.colors, name: 'Jet Black',
-      colorHex: '#1A1A1A', emoji: '🎨'),
-  ShopItem(id: 'hc_3B2415', category: ShopCategory.colors, name: 'Espresso',
-      colorHex: '#3B2415', emoji: '🎨'),
-  ShopItem(id: 'hc_8B5A2B', category: ShopCategory.colors, name: 'Chestnut',
-      price: 60, colorHex: '#8B5A2B', emoji: '🎨'),
-  ShopItem(id: 'hc_4A4A4A', category: ShopCategory.colors, name: 'Ash Gray',
-      price: 60, colorHex: '#4A4A4A', emoji: '🎨'),
-  ShopItem(id: 'hc_D2A679', category: ShopCategory.colors, name: 'Sandy',
-      price: 80, colorHex: '#D2A679', emoji: '🎨'),
-  // Black, Espresso (brown) and Golden Blonde are the free starter colours
-  ShopItem(id: 'hc_E8C468', category: ShopCategory.colors, name: 'Golden Blonde',
-      colorHex: '#E8C468', emoji: '🎨'),
-  ShopItem(id: 'hc_B33A1E', category: ShopCategory.colors, name: 'Legendary Crimson',
-      price: 200, colorHex: '#B33A1E', emoji: '🎨'),
-
-  // 🎽 CLOTHES
-  // ⭐ starter outfit: the white tank-top set (free). Female heroes get the
-  // body-matched file female/clothes/starter_set_<bodyType>.png.
-  ShopItem(id: kStarterOutfitId, category: ShopCategory.clothes, name: 'Training Set',
-      asset: '$kClothesDir/outfit_01.png', emoji: '🎽', slot: 'armor'),
-  // Milestone reward with no art yet (shows as locked / "art coming soon")
-  ShopItem(id: 'slayer_boots', category: ShopCategory.clothes, name: 'Slayer Iron Boots',
-      unlockKm: 15, emoji: '🥾', slot: 'boots'),
-
-  // 🎭 FACES
-  ShopItem(id: 'neutral', category: ShopCategory.faces, name: 'Neutral',
-      asset: '$kFaceDir/expression_01.png', emoji: '🎭'),
-
-  // 🌌 Scenes are no longer sold: each game mode has its own map now
-  // (see lib/models/run_mode.dart), so the SCENES tab was removed.
-];
-
-const List<(ShopCategory, String, String)> _cats = [
-  (ShopCategory.hair, '💇', 'HAIR'),
-  (ShopCategory.colors, '🎨', 'COLORS'),
-  (ShopCategory.clothes, '🎽', 'CLOTHES'),
-  (ShopCategory.faces, '🎭', 'FACES'),
-  (ShopCategory.backgrounds, '🌌', 'BACKGROUNDS'),
-];
-
-// ───────────────────────── Saved data ─────────────────────────
-
-class _ShopData {
-  final int gems;
-  final double totalKm;
-  final int level;
-  final int xp;
-  final Set<String> owned;
+class _Data {
+  final HeroProgress p;
+  final String heroId;
+  final HeroOutfit outfit;
   final Set<String> streakClaims;
-  final String hair, face, clothes, bg;
-  final String bodyId, skinTone, hairColor;
-  final String? gender;
+  final String bg;
+  const _Data(this.p, this.heroId, this.outfit, this.streakClaims, this.bg);
 
-  const _ShopData({
-    required this.gems,
-    required this.totalKm,
-    required this.level,
-    required this.xp,
-    required this.owned,
-    required this.streakClaims,
-    required this.hair,
-    required this.face,
-    required this.clothes,
-    required this.bg,
-    required this.bodyId,
-    required this.skinTone,
-    required this.hairColor,
-    required this.gender,
-  });
-
-  factory _ShopData.from(Map<String, dynamic> d) {
-    final p = CharacterProfile.fromFirestore(d);
-    final stored = d['body_tier'] as String?;
-    final tier = (p.heightCm == null || p.weightKg == null) && stored != null
-        ? BodyTierExt.fromId(stored)
-        : p.bodyTier;
-
-    final rawClothes = d['equipped_clothes'];
-    final clothesList = rawClothes is List ? rawClothes.whereType<String>().toList() : null;
-    final clothes = clothesList == null
-        ? StarterPack.activeOutfit
-        : (clothesList.isEmpty ? '' : normalizeOutfitId(clothesList.first));
-
-    final ownedRaw = d['owned_items'];
-
-    return _ShopData(
-      gems: (d['gems'] as num?)?.toInt() ?? 0,
-      totalKm: (d['total_km'] as num?)?.toDouble() ?? 0.0,
-      level: LevelProgress.fromXp((d['xp'] as num?)?.toInt() ?? 0).level,
-      xp: (d['xp'] as num?)?.toInt() ?? 0,
-      owned: ownedRaw is List ? ownedRaw.whereType<String>().toSet() : <String>{},
-      streakClaims: d['streak_claims'] is List
-          ? (d['streak_claims'] as List).whereType<String>().toSet()
-          : <String>{},
-      hair: p.hairStyle.id,
-      face: p.faceExpression.id,
-      clothes: clothes,
-      bg: (d['background_id'] as String?) ?? 'valley',
-      bodyId: tier.id,
-      skinTone: p.skinTone,
-      hairColor: p.hairColor,
-      gender: p.gender,
-    );
-  }
+  factory _Data.from(Map<String, dynamic> d) => _Data(
+        HeroProgress.fromData(d),
+        heroIdOf(d) ?? kDefaultHeroId,
+        outfitOf(d),
+        d['streak_claims'] is List
+            ? (d['streak_claims'] as List).whereType<String>().toSet()
+            : <String>{},
+        (d['background_id'] as String?) ?? 'valley',
+      );
 }
 
-// ───────────────────────── Screen ─────────────────────────
+class _TabDef {
+  final String key; // 'featured' | 'heroes' | HeroSlot.name
+  final HeroSlot? slot;
+  final String label;
+  final Color color, edge;
+  const _TabDef(this.key, this.slot, this.label, this.color, this.edge);
+}
+
+const List<_TabDef> _tabs = [
+  _TabDef('featured', null, 'FEATURED', Color(0xFF7B4DFF), Color(0xFF3A1F8F)),
+  _TabDef('heroes', null, 'HEROES', Color(0xFFFF7A00), Color(0xFF8F3F00)),
+  _TabDef('head', HeroSlot.head, 'HEAD', Color(0xFFE5484D), Color(0xFF7A1C20)),
+  _TabDef('face', HeroSlot.face, 'FACE', Color(0xFF9B59FF), Color(0xFF4B2A8A)),
+  _TabDef('top', HeroSlot.top, 'TOPS', Color(0xFF00B06F), Color(0xFF006B44)),
+  _TabDef('bottom', HeroSlot.bottom, 'BOTTOMS', Color(0xFF1E88E5), Color(0xFF0D47A1)),
+  _TabDef('shoes', HeroSlot.shoes, 'SHOES', Color(0xFFD97706), Color(0xFF7C4A03)),
+  _TabDef('back', HeroSlot.back, 'BACK', Color(0xFF0EA5A5), Color(0xFF065858)),
+  _TabDef('neck', HeroSlot.neck, 'NECK', Color(0xFFE05297), Color(0xFF7A2252)),
+];
 
 class AvatarShopScreen extends StatefulWidget {
   const AvatarShopScreen({super.key});
@@ -229,11 +84,17 @@ class AvatarShopScreen extends StatefulWidget {
 }
 
 class _AvatarShopScreenState extends State<AvatarShopScreen> {
-  ShopCategory? _cat; // null = FEATURED tab
+  String _tab = 'featured';
   String _query = '';
   final TextEditingController _searchCtl = TextEditingController();
   ActivitySnapshot _act = const ActivitySnapshot();
   bool _claiming = false;
+  bool _buying = false;
+
+  // Draft look = what the live preview shows (not saved until BUY / SAVE).
+  String _sig = '';
+  String _heroD = kDefaultHeroId;
+  Map<String, String> _outD = <String, String>{};
 
   @override
   void initState() {
@@ -246,9 +107,14 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     }
   }
 
-  // ── weekly pick + streak rewards ──
+  @override
+  void dispose() {
+    _searchCtl.dispose();
+    super.dispose();
+  }
 
-  /// Streak milestones: days -> gem reward.
+  // ── streak + weekly pick ──
+
   static const List<(int, int)> _streakRewards = [(3, 25), (7, 75), (14, 150), (30, 400)];
 
   String _streakKey(int days) {
@@ -256,16 +122,6 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     if (st == null) return '';
     String two(int n) => n.toString().padLeft(2, '0');
     return '$days:${st.year}-${two(st.month)}-${two(st.day)}';
-  }
-
-  /// One purchasable item is spotlighted per week (same for every player).
-  ShopItem? _weeklyPick() {
-    final pool = kShopCatalog
-        .where((i) =>
-            i.price > 0 && i.unlockKm == 0 && i.unlockLevel <= 1 && i.equippable)
-        .toList();
-    if (pool.isEmpty) return null;
-    return pool[Weekly.index(DateTime.now()) % pool.length];
   }
 
   Future<void> _claimStreak(String uid, int days, int gems) async {
@@ -283,7 +139,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
           'streak_claims': FieldValue.arrayUnion([key]),
         });
       });
-      _snack('🔥 $days-day streak reward: +$gems 💎');
+      _snack('\u{1F525} $days-day streak reward: +$gems \u{1F48E}');
     } catch (e) {
       _snack(e == 'claimed' ? 'Already claimed.' : 'Claim failed. Try again.');
     } finally {
@@ -291,89 +147,80 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     }
   }
 
-  // Draft look = what the live preview shows (not saved until purchase).
-  String _sig = '';
-  String _hair = '', _face = '', _clothes = '', _bg = '', _hairColor = '';
-
-  bool _buying = false;
-
-  // ── helpers ──
-
-  ShopItem? _find(ShopCategory c, String id) {
-    for (final i in kShopCatalog) {
-      if (i.category != c) continue;
-      if (c == ShopCategory.colors) {
-        if (i.colorHex?.toUpperCase() == id.toUpperCase()) return i;
-      } else if (i.id == id) {
-        return i;
-      }
-    }
-    return null;
+  /// One purchasable item is spotlighted per week (same for every player).
+  HeroItem? _weeklyPick() {
+    final pool = kHeroItems.where((i) => i.isForSale && i.rule.isNone).toList();
+    if (pool.isEmpty) return null;
+    return pool[Weekly.index(DateTime.now()) % pool.length];
   }
 
-  String _draftOf(ShopCategory c) {
-    switch (c) {
-      case ShopCategory.hair:        return _hair;
-      case ShopCategory.colors:      return _hairColor;
-      case ShopCategory.clothes:     return _clothes;
-      case ShopCategory.faces:       return _face;
-      case ShopCategory.backgrounds: return _bg;
+  /// (coins, gems) price today, with the weekly discount.
+  (int, int) _price(HeroItem i) {
+    final off = _weeklyPick()?.id == i.id;
+    int d(int v) {
+      if (v == 0 || !off) return v;
+      return (v * (1 - kWeeklyDiscount)).round().clamp(1, v).toInt();
     }
+    return (d(i.coins), d(i.gems));
   }
 
-  void _setDraft(ShopCategory c, String id) {
-    switch (c) {
-      case ShopCategory.hair:        _hair = id; break;
-      case ShopCategory.colors:      _hairColor = id; break;
-      case ShopCategory.clothes:     _clothes = id; break;
-      case ShopCategory.faces:       _face = id; break;
-      case ShopCategory.backgrounds: _bg = id; break;
-    }
+  String _priceText(HeroItem i) {
+    final (c, g) = _price(i);
+    if (g > 0) return '$g \u{1F48E}';
+    if (c > 0) return '$c \u{1FA99}';
+    return i.isFree ? 'FREE' : 'EARN';
   }
 
-  /// `isUnlocked` for this player (see [isShopItemUnlocked]).
-  bool _isOwned(ShopItem i, _ShopData s) =>
-      isShopItemUnlocked(i, owned: s.owned, totalKm: s.totalKm, level: s.level) ||
-      // the colour you already wear is yours
-      (i.category == ShopCategory.colors &&
-          i.colorHex?.toUpperCase() == s.hairColor.toUpperCase());
+  // ── ownership ──
 
-  /// Locked behind a kilometre milestone that is not reached yet.
-  bool _isLocked(ShopItem i, _ShopData s) => !_isOwned(i, s) && (i.unlockKm > s.totalKm || i.unlockLevel > s.level);
+  bool _ownedItem(HeroItem i, _Data s) => isItemUnlocked(i, s.p);
+  bool _ruleLockedItem(HeroItem i, _Data s) => !_ownedItem(i, s) && !i.rule.met(s.p);
+  bool _ownedHero(HeroDef h, _Data s) => isHeroUnlocked(h, s.p);
+  bool _ruleLockedHero(HeroDef h, _Data s) =>
+      !_ownedHero(h, s) && h.gemPrice == 0;
 
-  List<ShopItem> _draftItems() {
-    final out = <ShopItem>[];
-    for (final c in ShopCategory.values) {
-      final id = _draftOf(c);
-      if (id.isEmpty) continue;
-      final item = _find(c, id);
-      if (item != null) out.add(item);
+  List<HeroItem> _draftItems() {
+    final out = <HeroItem>[];
+    for (final slot in kSlotDrawOrder) {
+      final id = _outD[slot.name];
+      if (id == null) continue;
+      final it = heroItemById(id);
+      if (it != null) out.add(it);
     }
     return out;
   }
 
-  int _cost(_ShopData s) => _draftItems()
-      .where((i) => !_isOwned(i, s))
-      .fold<int>(0, (sum, i) => sum + i.price);
-
-  bool _changed(_ShopData s) =>
-      _hair != s.hair ||
-      _face != s.face ||
-      _clothes != s.clothes ||
-      _bg != s.bg ||
-      _hairColor.toUpperCase() != s.hairColor.toUpperCase();
-
-  /// A previewed item the player can't unlock yet (distance-gated).
-  ShopItem? _lockedInDraft(_ShopData s) {
+  ({int coins, int gems}) _cost(_Data s) {
+    var coins = 0, gems = 0;
     for (final i in _draftItems()) {
-      if (_isLocked(i, s)) return i;
+      if (_ownedItem(i, s)) continue;
+      final (c, g) = _price(i);
+      coins += c;
+      gems += g;
+    }
+    final h = heroById(_heroD);
+    if (h != null && !_ownedHero(h, s)) gems += h.gemPrice;
+    return (coins: coins, gems: gems);
+  }
+
+  bool _changed(_Data s) {
+    if (_heroD != s.heroId) return true;
+    if (_outD.length != s.outfit.length) return true;
+    for (final e in _outD.entries) {
+      if (s.outfit[e.key] != e.value) return true;
+    }
+    return false;
+  }
+
+  /// Name of a previewed thing the player cannot get yet (rank / level locked).
+  String? _lockedInDraft(_Data s) {
+    final h = heroById(_heroD);
+    if (h != null && _ruleLockedHero(h, s)) return h.name;
+    for (final i in _draftItems()) {
+      if (_ruleLockedItem(i, s)) return i.name;
     }
     return null;
   }
-
-  String _kmText(double km) => km.toStringAsFixed(1); // e.g. 15.0
-
-  Color _hex(String h) => Color(int.parse('FF${h.replaceAll('#', '')}', radix: 16));
 
   String _fmt(int n) => n
       .toString()
@@ -386,68 +233,73 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       ..showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
   }
 
-  void _onItemTap(ShopItem item, _ShopData s) {
-    if (!item.equippable) {
-      _snack(_isLocked(item, s)
-          ? '🔒 ${item.lockLabel(s.totalKm, s.level)}: ${item.name}'
-          : 'Art for ${item.name} is coming soon!');
-      return;
-    }
-    // Try-on: unowned and even distance-locked items go straight onto the
-    // live mannequin. Nothing is bought until BUY EQUIPPED ITEM is tapped.
-    if (_isLocked(item, s)) {
-      _snack('👀 Trying on ${item.name} — ${item.lockLabel(s.totalKm, s.level)}');
+  void _onItemTap(HeroItem item, _Data s) {
+    if (_ruleLockedItem(item, s)) {
+      _snack('\u{1F440} Trying on ${item.name}: ${item.rule.label ?? 'locked'}');
     }
     setState(() {
-      // tapping equipped clothes again takes them off
-      if (item.category == ShopCategory.clothes && _clothes == item.id) {
-        _clothes = '';
+      if (_outD[item.slot.name] == item.id) {
+        _outD = Map<String, String>.of(_outD)..remove(item.slot.name);
       } else {
-        _setDraft(item.category,
-            item.category == ShopCategory.colors ? item.colorHex! : item.id);
+        _outD = Map<String, String>.of(_outD)..[item.slot.name] = item.id;
       }
     });
+  }
+
+  void _onHeroTap(HeroDef h, _Data s) {
+    if (_ruleLockedHero(h, s)) {
+      _snack('\u{1F440} Trying on ${h.name}: ${h.rule.label ?? 'locked'}');
+    }
+    setState(() => _heroD = h.id);
   }
 
   Future<void> _purchase(String uid) async {
     setState(() => _buying = true);
     try {
-      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+      final ref = FirebaseFirestore.instance.collection('users').doc(uid);
       await FirebaseFirestore.instance.runTransaction((txn) async {
-        final snap = await txn.get(userRef);
-        final fresh = _ShopData.from(snap.data() ?? {});
+        final snap = await txn.get(ref);
+        final fresh = _Data.from(snap.data() ?? <String, dynamic>{});
 
-        var cost = 0;
-        final newOwned = <String>[];
-        for (final item in _draftItems()) {
-          if (_isOwned(item, fresh)) continue;
-          if (_isLocked(item, fresh)) throw 'locked';
-          cost += item.price;
-          newOwned.add(item.id);
+        var coins = 0, gems = 0;
+        final newItems = <String>[];
+        for (final i in _draftItems()) {
+          if (_ownedItem(i, fresh)) continue;
+          if (_ruleLockedItem(i, fresh)) throw 'locked';
+          final (c, g) = _price(i);
+          coins += c;
+          gems += g;
+          newItems.add(i.id);
         }
-        if (fresh.gems < cost) throw 'gems';
+        final h = heroById(_heroD);
+        String? newHero;
+        if (h != null && !_ownedHero(h, fresh)) {
+          if (_ruleLockedHero(h, fresh)) throw 'locked';
+          gems += h.gemPrice;
+          newHero = h.id;
+        }
+        if (fresh.p.coins < coins) throw 'coins';
+        if (fresh.p.gems < gems) throw 'gems';
 
-        final updates = <String, dynamic>{};
-        if (cost > 0) updates['gems'] = fresh.gems - cost;
-        if (newOwned.isNotEmpty) updates['owned_items'] = FieldValue.arrayUnion(newOwned);
-        if (_hair != fresh.hair) updates['hair_style'] = _hair;
-        if (_face != fresh.face) updates['face_expression'] = _face;
-        if (_hairColor.toUpperCase() != fresh.hairColor.toUpperCase()) {
-          updates['hair_color'] = _hairColor;
-        }
-        if (_clothes != fresh.clothes) {
-          updates['equipped_clothes'] = _clothes.isEmpty ? <String>[] : [_clothes];
-        }
-        if (_bg != fresh.bg) updates['background_id'] = _bg;
-        if (updates.isNotEmpty) txn.update(userRef, updates);
+        final up = <String, dynamic>{
+          'hero_id': _heroD,
+          'hero_outfit': Map<String, String>.of(_outD),
+        };
+        if (coins > 0) up['coins'] = FieldValue.increment(-coins);
+        if (gems > 0) up['gems'] = FieldValue.increment(-gems);
+        if (newItems.isNotEmpty) up['owned_items'] = FieldValue.arrayUnion(newItems);
+        if (newHero != null) up['owned_heroes'] = FieldValue.arrayUnion([newHero]);
+        txn.update(ref, up);
       });
       _snack('✅ Look saved!');
     } catch (e) {
       _snack(e == 'gems'
           ? 'Not enough gems!'
-          : e == 'locked'
-              ? 'An item is still locked.'
-              : 'Purchase failed. Try again.');
+          : e == 'coins'
+              ? 'Not enough coins!'
+              : e == 'locked'
+                  ? 'Something is still locked.'
+                  : 'Purchase failed. Try again.');
     } finally {
       if (mounted) setState(() => _buying = false);
     }
@@ -456,18 +308,12 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   // ───────────────────────── build ─────────────────────────
 
   @override
-  void dispose() {
-    _searchCtl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       return const Scaffold(
         backgroundColor: Rb.bg,
-        body: Center(child: CircularProgressIndicator(color: Rb.green)),
+        body: const LoadingRunner(),
       );
     }
 
@@ -475,101 +321,106 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       backgroundColor: Rb.bg,
       body: SafeArea(
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+          stream: UserDoc.instance.stream,
+          initialData: UserDoc.instance.snapshotFor(uid),
           builder: (context, snap) {
             if (!snap.hasData) {
-              return const Center(child: CircularProgressIndicator(color: Rb.green));
+              return const LoadingRunner();
             }
-            final s = _ShopData.from(snap.data!.data() ?? {});
+            final s = _Data.from(snap.data!.data() ?? <String, dynamic>{});
 
-            // (Re)load the draft whenever the SAVED look changes — first load,
-            // after a purchase, or after equipping in the Gear screen.
-            final sig = '${s.hair}|${s.face}|${s.clothes}|${s.bg}|${s.hairColor}';
+            // (Re)load the draft whenever the SAVED look changes.
+            final keys = s.outfit.keys.toList()..sort();
+            final sig = '${s.heroId}|${keys.map((k) => '$k=${s.outfit[k]}').join(',')}';
             if (sig != _sig) {
               _sig = sig;
-              _hair = s.hair;
-              _face = s.face;
-              _clothes = s.clothes;
-              _bg = s.bg;
-              _hairColor = s.hairColor;
+              _heroD = s.heroId;
+              _outD = Map<String, String>.of(s.outfit);
             }
 
-            return LayoutBuilder(builder: (context, c) {
-              final wide = c.maxWidth >= 760;
-              final browse = Column(
-                children: [
-                  _buildSearchRow(),
-                  const SizedBox(height: 8),
-                  _buildPills(),
-                  const SizedBox(height: 10),
-                  Expanded(child: _buildContent(s)),
-                ],
-              );
-
-              if (wide) {
-                // Roblox-style: avatar panel on the left, catalogue on the right
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 340,
-                        child: SingleChildScrollView(
-                          child: _buildPreviewPanel(s, uid, wide: true),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _buildHeader(s),
-                            const SizedBox(height: 8),
-                            Expanded(child: browse),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-                child: Column(
-                  children: [
-                    _buildHeader(s),
-                    const SizedBox(height: 8),
-                    _buildPreviewPanel(s, uid, wide: false),
-                    const SizedBox(height: 4),
-                    Expanded(child: browse),
-                  ],
-                ),
-              );
-            });
+            return ValueListenableBuilder<BodyCompositionState>(
+              valueListenable: EvolutionState.instance.composition,
+              builder: (context, form, _) =>
+                  _layout(context, s, uid, form.tier),
+            );
           },
         ),
       ),
     );
   }
 
+  Widget _layout(BuildContext context, _Data s, String uid, BodyTier tier) {
+    return LayoutBuilder(builder: (context, c) {
+      final wide = c.maxWidth >= 760;
+      final browse = Column(
+        children: [
+          _buildSearchRow(),
+          const SizedBox(height: 8),
+          _buildPills(),
+          const SizedBox(height: 10),
+          Expanded(child: _buildContent(s, tier)),
+        ],
+      );
+
+      if (wide) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 290,
+                child: SingleChildScrollView(
+                  child: _buildPreviewPanel(s, uid, tier, wide: true),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  children: [
+                    _buildHeader(s),
+                    const SizedBox(height: 8),
+                    Expanded(child: browse),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        child: Column(
+          children: [
+            _buildHeader(s),
+            const SizedBox(height: 8),
+            _buildPreviewPanel(s, uid, tier, wide: false),
+            const SizedBox(height: 4),
+            Expanded(child: browse),
+          ],
+        ),
+      );
+    });
+  }
+
   // ───────────────────────── header ─────────────────────────
 
-  Widget _buildHeader(_ShopData s) {
+  Widget _buildHeader(_Data s) {
     Widget chip(String text, Color c, Color e) => Block(
           color: c,
           edge: e,
           depth: 3,
           radius: 10,
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-          child: BlockText(text, size: 11, stroke: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: BlockText(text, size: 10.5, stroke: 3),
         );
 
     return Block(
       color: Rb.hud,
       edge: Rb.hudEdge,
-      depth: 6,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      depth: 5,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
         children: [
           const Expanded(
@@ -578,63 +429,53 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
               alignment: Alignment.centerLeft,
               child: IconLabel(
                 iconPath: AppIcons.shopChest,
-                iconSize: 30,
+                iconSize: 26,
                 gap: 8,
-                label: BlockText('AVATAR SHOP', size: 20, stroke: 4.5),
+                label: BlockText('HERO SHOP', size: 18, stroke: 4),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          // gamified context: your level and distance drive the unlocks
-          chip('LV ${s.level}', Rb.green, Rb.greenEdge),
           const SizedBox(width: 6),
-          chip('${s.totalKm.toStringAsFixed(1)} KM', Rb.orange, Rb.orangeEdge),
-          const SizedBox(width: 6),
-          Block(
-            color: Rb.blue,
-            edge: Rb.blueEdge,
-            depth: 4,
-            radius: 12,
-            gloss: true,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            child: BlockText('💎 ${_fmt(s.gems)}', size: 13, stroke: 3.5),
-          ),
+          chip('LV ${s.p.level}', Rb.green, Rb.greenEdge),
+          const SizedBox(width: 5),
+          chip('\u{1FA99} ${_fmt(s.p.coins)}', Rb.orange, Rb.orangeEdge),
+          const SizedBox(width: 5),
+          chip('\u{1F48E} ${_fmt(s.p.gems)}', Rb.blue, Rb.blueEdge),
         ],
       ),
     );
   }
 
-  // ───────────────────────── search + category pills ─────────────────────────
+  // ───────────────────────── search + pills ─────────────────────────
 
   Widget _buildSearchRow() {
     return Container(
-      height: 42,
+      height: 38,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: Rb.panel,
-        borderRadius: BorderRadius.circular(21),
+        borderRadius: BorderRadius.circular(19),
         border: Border.all(color: Colors.black, width: 3),
         boxShadow: const [
-          BoxShadow(color: Colors.black, offset: Offset(0, 4), blurRadius: 0),
+          BoxShadow(color: Colors.black, offset: Offset(0, 3), blurRadius: 0),
         ],
       ),
       child: Row(
         children: [
-          const Icon(Icons.search, color: Colors.white70, size: 20),
+          const Icon(Icons.search, color: Colors.white70, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _searchCtl,
               onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
               style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
               cursorColor: Rb.neon,
               decoration: const InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
-                hintText: 'Search items',
-                hintStyle:
-                    TextStyle(color: Colors.white38, fontWeight: FontWeight.w800),
+                hintText: 'Search heroes and items',
+                hintStyle: TextStyle(color: Colors.white38, fontWeight: FontWeight.w800),
               ),
             ),
           ),
@@ -644,7 +485,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
                 _query = '';
                 _searchCtl.clear();
               }),
-              child: const Icon(Icons.close, color: Colors.white70, size: 20),
+              child: const Icon(Icons.close, color: Colors.white70, size: 18),
             ),
         ],
       ),
@@ -653,33 +494,32 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
 
   Widget _buildPills() {
     return SizedBox(
-      height: 48,
+      height: 42,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(bottom: 5),
+        padding: const EdgeInsets.only(bottom: 4),
         itemCount: _tabs.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: 7),
         itemBuilder: (_, i) {
           final t = _tabs[i];
-          final sel = _cat == t.cat;
+          final sel = _tab == t.key;
           return PressBlock(
             color: t.color,
             edge: t.edge,
-            depth: 4,
-            radius: 20,
+            depth: 3,
+            radius: 18,
             forcePressed: sel,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-            onTap: () => setState(() => _cat = t.cat),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
+            onTap: () => setState(() => _tab = t.key),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                BlockText(t.label, size: 13, stroke: 3.5),
-                const SizedBox(height: 2),
-                // Roblox-style underline marks the open tab
+                BlockText(t.label, size: 11.5, stroke: 3),
+                const SizedBox(height: 1),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   height: 3,
-                  width: sel ? 28 : 0,
+                  width: sel ? 24 : 0,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(2),
@@ -693,77 +533,91 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  // ───────────────────────── content: featured / grid / search ─────────────────────────
+  // ───────────────────────── content ─────────────────────────
 
-  Widget _buildContent(_ShopData s) {
+  Widget _buildContent(_Data s, BodyTier tier) {
     if (_query.isNotEmpty) {
-      final hits = kShopCatalog
+      final heroes = (_tab == 'featured' || _tab == 'heroes')
+          ? kHeroes.where((h) => h.name.toLowerCase().contains(_query)).toList()
+          : <HeroDef>[];
+      final items = kHeroItems
           .where((i) =>
               i.name.toLowerCase().contains(_query) &&
-              (_cat == null || i.category == _cat))
+              (_tab == 'featured' || _tab == 'heroes' || _tab == i.slot.name))
           .toList();
-      if (hits.isEmpty) {
-        return const Center(
-          child: BlockText('NO ITEMS FOUND', size: 14, stroke: 3.5),
-        );
+      if (heroes.isEmpty && items.isEmpty) {
+        return const Center(child: BlockText('NOTHING FOUND', size: 14, stroke: 3.5));
       }
-      return _buildGrid(hits, s);
+      return _buildGrid(s, tier, heroes: heroes, items: items);
     }
-    if (_cat == null) return _buildFeatured(s);
-    return _buildGrid(kShopCatalog.where((i) => i.category == _cat).toList(), s);
+    if (_tab == 'featured') return _buildFeatured(s, tier);
+    if (_tab == 'heroes') return _buildGrid(s, tier, heroes: kHeroes, items: const []);
+    final slot = _tabs.firstWhere((t) => t.key == _tab).slot!;
+    return _buildGrid(s, tier, heroes: const [], items: heroItemsIn(slot));
   }
 
-  Widget _buildGrid(List<ShopItem> items, _ShopData s) {
+  Widget _buildGrid(_Data s, BodyTier tier,
+      {required List<HeroDef> heroes, required List<HeroItem> items}) {
     return LayoutBuilder(builder: (context, c) {
-      final cols = (c.maxWidth / 150).floor().clamp(3, 6);
+      final cols = (c.maxWidth / 130).floor().clamp(3, 6);
       return GridView.builder(
         padding: const EdgeInsets.fromLTRB(2, 4, 2, 16),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: cols,
-          crossAxisSpacing: 10,
+          crossAxisSpacing: 9,
           mainAxisSpacing: 6,
-          childAspectRatio: 0.66,
+          childAspectRatio: 0.7,
         ),
-        itemCount: items.length,
-        itemBuilder: (context, i) => _buildTile(items[i], s),
+        itemCount: heroes.length + items.length,
+        itemBuilder: (context, i) => i < heroes.length
+            ? _heroTile(heroes[i], s, tier)
+            : _itemTile(items[i - heroes.length], s, tier),
       );
     });
   }
 
-  // ── Featured: next unlock, category mosaic, run-to-unlock list ──
+  // ── Featured ──
 
-  /// XP needed in total to REACH [level] (level n needs n*500 xp from n-1).
   int _xpForLevel(int level) => 500 * (level - 1) * level ~/ 2;
 
-  /// 0..1 progress toward unlocking a gated item (1 = reached).
-  double _progress(ShopItem i, _ShopData s) {
-    var p = 1.0;
-    if (i.unlockKm > 0) p = p < s.totalKm / i.unlockKm ? p : s.totalKm / i.unlockKm;
-    if (i.unlockLevel > 1) {
-      final need = _xpForLevel(i.unlockLevel);
-      p = p < s.xp / need ? p : s.xp / need;
+  double _progress(UnlockRule r, HeroProgress p) {
+    var v = 1.0;
+    void minWith(double x) {
+      if (x < v) v = x;
     }
-    return p.clamp(0.0, 1.0).toDouble();
+    if (r.level > 1) minWith(p.xp / _xpForLevel(r.level));
+    if (r.km > 0) minWith(p.totalKm / r.km);
+    if (r.stars > 0) minWith(p.totalStars / r.stars);
+    if (r.stageId != null) minWith(p.cleared(r.stageId!) ? 1.0 : 0.0);
+    return v.clamp(0.0, 1.0).toDouble();
   }
 
-  /// "3.2 km to go" / "120 XP to go"
-  String _remaining(ShopItem i, _ShopData s) {
+  String _remaining(UnlockRule r, HeroProgress p) {
     final parts = <String>[];
-    if (i.unlockKm > s.totalKm) {
-      parts.add('${(i.unlockKm - s.totalKm).toStringAsFixed(1)} km to go');
-    }
-    if (i.unlockLevel > s.level) {
-      final xp = _xpForLevel(i.unlockLevel) - s.xp;
+    if (r.km > p.totalKm) parts.add('${(r.km - p.totalKm).toStringAsFixed(1)} km to go');
+    if (r.level > p.level) {
+      final xp = _xpForLevel(r.level) - p.xp;
       parts.add('${_fmt(xp < 0 ? 0 : xp)} XP to go');
     }
+    if (r.stars > p.totalStars) parts.add('${r.stars - p.totalStars} stars to go');
+    if (r.stageId != null && !p.cleared(r.stageId!)) parts.add(r.label ?? 'Clear the rank');
     return parts.join('  •  ');
   }
 
-  Widget _buildFeatured(_ShopData s) {
-    final gated = kShopCatalog
-        .where((i) => (i.unlockKm > 0 || i.unlockLevel > 1) && !_isOwned(i, s))
-        .toList()
-      ..sort((a, b) => _progress(b, s).compareTo(_progress(a, s)));
+  Widget _buildFeatured(_Data s, BodyTier tier) {
+    // everything still locked behind a rule, closest first
+    final gated = <({String name, Widget art, UnlockRule rule})>[];
+    for (final h in kHeroes) {
+      if (_ruleLockedHero(h, s)) {
+        gated.add((name: h.name, art: _heroArt(h, tier), rule: h.rule));
+      }
+    }
+    for (final i in kHeroItems) {
+      if (_ruleLockedItem(i, s) && i.isEarned) {
+        gated.add((name: i.name, art: _itemArt(i, tier), rule: i.rule));
+      }
+    }
+    gated.sort((a, b) => _progress(b.rule, s.p).compareTo(_progress(a.rule, s.p)));
     final next = gated.isEmpty ? null : gated.first;
 
     return LayoutBuilder(builder: (context, c) {
@@ -772,52 +626,52 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
         padding: const EdgeInsets.fromLTRB(2, 4, 2, 16),
         children: [
           _streakCard(s),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           if (_weeklyPick() case final pick?) ...[
-            _weeklyPickCard(pick, s),
-            const SizedBox(height: 12),
+            _weeklyPickCard(pick, s, tier),
+            const SizedBox(height: 10),
           ],
           if (next != null) _nextUnlockCard(next, s),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 10,
             runSpacing: 6,
             children: [
-              for (final t in _tabs.where((t) => t.cat != null))
-                SizedBox(width: tileW, child: _categoryTile(t, s)),
+              for (final t in _tabs.where((t) => t.key != 'featured'))
+                SizedBox(width: tileW, child: _categoryTile(t, s, tier)),
             ],
           ),
           if (gated.length > 1) ...[
             const SizedBox(height: 10),
-            const BlockText('RUN TO UNLOCK', size: 14, stroke: 3.5, color: Rb.gold),
+            const BlockText('EARN TO UNLOCK', size: 13, stroke: 3.5, color: Rb.gold),
             const SizedBox(height: 8),
-            for (final i in gated.skip(1)) _unlockRow(i, s),
+            for (final g in gated.skip(1)) _unlockRow(g, s),
           ],
         ],
       );
     });
   }
 
-  Widget _streakCard(_ShopData s) {
+  Widget _streakCard(_Data s) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final days = _act.streakDays;
     return Block(
       color: const Color(0xFFB5400A),
       edge: const Color(0xFF5A1F00),
-      depth: 6,
-      radius: 18,
-      padding: const EdgeInsets.all(12),
+      depth: 5,
+      radius: 16,
+      padding: const EdgeInsets.all(10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              BlockText('🔥 $days-DAY STREAK', size: 15, stroke: 4),
+              BlockText('\u{1F525} $days-DAY STREAK', size: 14, stroke: 4),
               const Spacer(),
               const BlockText('run daily for gems', size: 9, stroke: 2.5),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
           Row(
             children: [
               for (final r in _streakRewards) ...[
@@ -831,7 +685,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  Widget _streakChip(String? uid, _ShopData s, int need, int gems, int days) {
+  Widget _streakChip(String? uid, _Data s, int need, int gems, int days) {
     final key = _streakKey(need);
     final claimed = key.isNotEmpty && s.streakClaims.contains(key);
     final ready = days >= need && !claimed && uid != null;
@@ -840,19 +694,19 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     return PressBlock(
       color: c,
       edge: e,
-      depth: 4,
-      radius: 12,
+      depth: 3,
+      radius: 11,
       forcePressed: claimed,
-      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
       onTap: ready && !_claiming ? () => _claimStreak(uid!, need, gems) : null,
       child: Column(
         children: [
-          BlockText('${need}D', size: 12, stroke: 3.5),
+          BlockText('${need}D', size: 11.5, stroke: 3.5),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: BlockText(
-              claimed ? '✔' : '💎$gems',
-              size: 11,
+              claimed ? '✔' : '\u{1F48E}$gems',
+              size: 10.5,
               stroke: 3,
               color: claimed ? Rb.neon : (ready ? Colors.white : Rb.gold),
             ),
@@ -862,36 +716,38 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  Widget _weeklyPickCard(ShopItem i, _ShopData s) {
-    final owned = _isOwned(i, s);
+  Widget _weeklyPickCard(HeroItem i, _Data s, BodyTier tier) {
+    final owned = _ownedItem(i, s);
     return PressBlock(
       color: const Color(0xFF5B3A9E),
       edge: const Color(0xFF2A1A52),
-      depth: 6,
-      radius: 18,
-      padding: const EdgeInsets.all(12),
+      depth: 5,
+      radius: 16,
+      padding: const EdgeInsets.all(10),
       onTap: () => _onItemTap(i, s),
       child: Row(
         children: [
-          SizedBox(width: 84, height: 84, child: _artBox(i, s)),
-          const SizedBox(width: 12),
+          SizedBox(width: 70, height: 70, child: _itemArt(i, tier)),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const BlockText('⭐ WEEKLY PICK', size: 11, stroke: 3, color: Rb.gold),
+                    const BlockText('⭐ WEEKLY PICK', size: 10.5, stroke: 3, color: Rb.gold),
                     const Spacer(),
                     BlockText(Weekly.countdown(DateTime.now()), size: 9, stroke: 2.5),
                   ],
                 ),
                 const SizedBox(height: 2),
-                BlockText(i.name, size: 17, stroke: 4, maxLines: 1),
-                const SizedBox(height: 6),
+                BlockText(i.name, size: 16, stroke: 4, maxLines: 1),
+                const SizedBox(height: 5),
                 BlockText(
-                  owned ? '✔ OWNED' : '💎 ${i.price}  •  tap to try it on',
-                  size: 11,
+                  owned
+                      ? '✔ OWNED'
+                      : '${_priceText(i)}  •  25% off, tap to try on',
+                  size: 10.5,
                   stroke: 3,
                   color: owned ? Rb.neon : Colors.white,
                 ),
@@ -903,28 +759,28 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  Widget _nextUnlockCard(ShopItem i, _ShopData s) {
+  Widget _nextUnlockCard(({String name, Widget art, UnlockRule rule}) g, _Data s) {
     return Block(
       color: const Color(0xFFB8860B),
       edge: const Color(0xFF5A4305),
-      depth: 6,
-      radius: 18,
-      padding: const EdgeInsets.all(12),
+      depth: 5,
+      radius: 16,
+      padding: const EdgeInsets.all(10),
       child: Row(
         children: [
-          SizedBox(width: 84, height: 84, child: _artBox(i, s)),
-          const SizedBox(width: 12),
+          SizedBox(width: 70, height: 70, child: g.art),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const BlockText('NEXT UNLOCK', size: 11, stroke: 3),
+                const BlockText('NEXT UNLOCK', size: 10.5, stroke: 3),
                 const SizedBox(height: 2),
-                BlockText(i.name, size: 18, stroke: 4, maxLines: 1),
-                const SizedBox(height: 8),
-                BlockBar(value: _progress(i, s), height: 14, color: Rb.neon),
-                const SizedBox(height: 4),
-                BlockText(_remaining(i, s), size: 10, stroke: 2.5),
+                BlockText(g.name, size: 16, stroke: 4, maxLines: 1),
+                const SizedBox(height: 6),
+                BlockBar(value: _progress(g.rule, s.p), height: 12, color: Rb.neon),
+                const SizedBox(height: 3),
+                BlockText(_remaining(g.rule, s.p), size: 9.5, stroke: 2.5),
               ],
             ),
           ),
@@ -933,28 +789,28 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  Widget _unlockRow(ShopItem i, _ShopData s) {
+  Widget _unlockRow(({String name, Widget art, UnlockRule rule}) g, _Data s) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Block(
         color: Rb.slate,
         edge: Rb.slateEdge,
         depth: 4,
-        radius: 14,
-        padding: const EdgeInsets.all(8),
+        radius: 13,
+        padding: const EdgeInsets.all(7),
         child: Row(
           children: [
-            SizedBox(width: 52, height: 52, child: _artBox(i, s)),
+            SizedBox(width: 46, height: 46, child: g.art),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  BlockText(i.name, size: 13, stroke: 3, maxLines: 1),
-                  const SizedBox(height: 5),
-                  BlockBar(value: _progress(i, s), height: 9, color: Rb.green),
+                  BlockText(g.name, size: 12.5, stroke: 3, maxLines: 1),
+                  const SizedBox(height: 4),
+                  BlockBar(value: _progress(g.rule, s.p), height: 8, color: Rb.green),
                   const SizedBox(height: 3),
-                  BlockText(_remaining(i, s),
+                  BlockText(_remaining(g.rule, s.p),
                       size: 9, stroke: 2.5, color: const Color(0xFFB8BDC4)),
                 ],
               ),
@@ -965,285 +821,275 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  /// Colourful category card (like Roblox's collection tiles).
-  Widget _categoryTile(_TabDef t, _ShopData s) {
-    final items = kShopCatalog.where((i) => i.category == t.cat).toList();
-    final owned = items.where((i) => _isOwned(i, s)).length;
-    final shown = items.where((i) => i.equippable).take(2).toList();
+  Widget _categoryTile(_TabDef t, _Data s, BodyTier tier) {
+    final isHeroes = t.key == 'heroes';
+    final items = isHeroes ? const <HeroItem>[] : heroItemsIn(t.slot!);
+    final total = isHeroes ? kHeroes.length : items.length;
+    final owned = isHeroes
+        ? kHeroes.where((h) => _ownedHero(h, s)).length
+        : items.where((i) => _ownedItem(i, s)).length;
+    final arts = <Widget>[
+      if (isHeroes)
+        for (final h in kHeroes.take(2)) _heroArt(h, tier)
+      else
+        for (final i in items.take(2)) _itemArt(i, tier),
+    ];
     return PressBlock(
       color: t.color,
       edge: t.edge,
-      depth: 6,
-      radius: 16,
-      padding: const EdgeInsets.all(10),
-      onTap: () => setState(() => _cat = t.cat),
+      depth: 5,
+      radius: 15,
+      padding: const EdgeInsets.all(9),
+      onTap: () => setState(() => _tab = t.key),
       child: SizedBox(
-        height: 112,
+        height: 96,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            BlockText(t.label, size: 14, stroke: 3.5),
-            const SizedBox(height: 6),
+            BlockText(t.label, size: 13, stroke: 3.5),
+            const SizedBox(height: 5),
             Expanded(
               child: Row(
                 children: [
-                  for (final i in shown)
+                  for (final a in arts)
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(right: 6),
-                        child: _artBox(i, s),
+                        child: a,
                       ),
                     ),
-                  if (shown.isEmpty) const Spacer(),
+                  if (arts.isEmpty) const Spacer(),
                 ],
               ),
             ),
-            const SizedBox(height: 6),
-            BlockText('$owned / ${items.length} OWNED', size: 9, stroke: 2.5),
+            const SizedBox(height: 5),
+            BlockText('$owned / $total OWNED', size: 9, stroke: 2.5),
           ],
         ),
       ),
     );
   }
 
-  /// Rounded grey display box with the item's art (no overlays).
-  Widget _artBox(ShopItem item, _ShopData s) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFCBD5E1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.black, width: 3),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(7),
-        child: _preview(item, s),
-      ),
-    );
+  // ───────────────────────── tiles ─────────────────────────
+
+  Widget _frame(Widget child, {Color bg = const Color(0xFFCBD5E1)}) => Container(
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.black, width: 3),
+        ),
+        child: ClipRRect(borderRadius: BorderRadius.circular(7), child: child),
+      );
+
+  Widget _itemArt(HeroItem i, BodyTier tier) =>
+      _frame(ItemCrop(item: i, heroId: _heroD, tier: tier));
+
+  Widget _heroArt(HeroDef h, BodyTier tier) => _frame(
+        Padding(
+          padding: const EdgeInsets.all(3),
+          child: HeroStill(heroId: h.id, tier: tier),
+        ),
+        bg: h.color.withValues(alpha: 0.55),
+      );
+
+  ({Color c, Color e, String label}) _rarity(int r) {
+    switch (r) {
+      case 3:
+        return (c: const Color(0xFF9A6B00), e: const Color(0xFF4A3300), label: 'LEGEND');
+      case 2:
+        return (c: const Color(0xFF5B3A9E), e: const Color(0xFF2A1A52), label: 'EPIC');
+      case 1:
+        return (c: const Color(0xFF1E5F8F), e: const Color(0xFF0A2B45), label: 'RARE');
+      default:
+        return (c: Rb.slate, e: Colors.black, label: 'COMMON');
+    }
   }
 
-  // ───────────────────────── item tiles ─────────────────────────
-
-  /// Frame colour by rarity: common / rare / epic / milestone.
-  ({Color c, Color e, String label}) _rarity(ShopItem i) {
-    if (i.unlockKm > 0 || i.unlockLevel > 1) {
-      return (c: const Color(0xFF9A6B00), e: const Color(0xFF4A3300), label: 'MILESTONE');
-    }
-    if (i.price >= 150) {
-      return (c: const Color(0xFF5B3A9E), e: const Color(0xFF2A1A52), label: 'EPIC');
-    }
-    if (i.price > 0) {
-      return (c: const Color(0xFF1E5F8F), e: const Color(0xFF0A2B45), label: 'RARE');
-    }
-    return (c: Rb.slate, e: Colors.black, label: 'COMMON');
-  }
-
-  Widget _buildTile(ShopItem item, _ShopData s) {
-    final isUnlocked = _isOwned(item, s); // false = lock overlay
-    final owned = isUnlocked;
-    final locked = _isLocked(item, s);
-    final equipped = item.category == ShopCategory.colors
-        ? _hairColor.toUpperCase() == item.colorHex?.toUpperCase()
-        : _draftOf(item.category) == item.id;
-    final r = _rarity(item);
-
+  Widget _tile({
+    required Widget art,
+    required String name,
+    required ({Color c, Color e, String label}) r,
+    required bool equipped,
+    required bool owned,
+    required bool locked,
+    required String? lockText,
+    required double? lockProgress,
+    required String priceText,
+    required VoidCallback onTap,
+  }) {
     return PressBlock(
       color: equipped ? const Color(0xFF1E4A66) : r.c,
       edge: equipped ? Rb.neon : r.e,
-      depth: 6,
-      radius: 14,
+      depth: 5,
+      radius: 13,
       forcePressed: equipped,
-      padding: const EdgeInsets.all(6),
-      onTap: () => _onItemTap(item, s),
+      padding: const EdgeInsets.all(5),
+      onTap: onTap,
       child: Column(
         children: [
           Expanded(
-            child: Container(
+            child: SizedBox(
               width: double.infinity,
-              decoration: BoxDecoration(
-                color: item.category == ShopCategory.faces
-                    ? const Color(0xFFE6E9ED)
-                    : const Color(0xFFCBD5E1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.black, width: 3),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(7),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _preview(item, s),
-                    if (locked)
-                      _lockMask(item, s)
-                    else if (!isUnlocked)
-                      _premiumLock(), // priced item, not bought yet
-                    if (!locked && r.label != 'COMMON')
-                      Align(
-                        alignment: Alignment.bottomLeft,
-                        child: Container(
-                          margin: const EdgeInsets.all(3),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: r.c,
-                            borderRadius: BorderRadius.circular(5),
-                            border: Border.all(color: Colors.black, width: 1.5),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  art,
+                  if (locked)
+                    Container(
+                      margin: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xDD3A3D40),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: SizedBox(
+                          width: 90,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const PixelIcon(AppIcons.lock, size: 20),
+                              const SizedBox(height: 2),
+                              BlockText(lockText ?? 'Locked',
+                                  size: 8, stroke: 2.5, align: TextAlign.center),
+                              if (lockProgress != null) ...[
+                                const SizedBox(height: 4),
+                                BlockBar(value: lockProgress, height: 6, color: Rb.neon),
+                              ],
+                            ],
                           ),
-                          child: BlockText(r.label, size: 7, stroke: 2),
                         ),
                       ),
-                    if (equipped && owned)
-                      Align(
-                        alignment: Alignment.topLeft,
-                        child: Container(
-                          margin: const EdgeInsets.all(3),
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: Rb.green,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.black, width: 2),
-                          ),
-                          child: const Icon(Icons.check, color: Colors.white, size: 13),
+                    ),
+                  if (!locked && r.label != 'COMMON')
+                    Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Container(
+                        margin: const EdgeInsets.all(5),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: r.c,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: Colors.black, width: 1.5),
                         ),
+                        child: BlockText(r.label, size: 7, stroke: 2),
                       ),
-                  ],
-                ),
+                    ),
+                  if (equipped && owned)
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: Container(
+                        margin: const EdgeInsets.all(5),
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Rb.green,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.black, width: 2),
+                        ),
+                        child: const Icon(Icons.check, color: Colors.white, size: 12),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: BlockText(item.name, size: 11, stroke: 3, maxLines: 1),
+            child: BlockText(name, size: 10.5, stroke: 3, maxLines: 1),
           ),
-          const SizedBox(height: 6),
-          _tag(item, owned: owned, locked: locked, equipped: equipped),
+          const SizedBox(height: 5),
+          _tag(owned: owned, locked: locked, equipped: equipped, price: priceText),
         ],
       ),
     );
   }
 
-  Widget _tag(ShopItem item,
-      {required bool owned, required bool locked, required bool equipped}) {
+  Widget _tag(
+      {required bool owned,
+      required bool locked,
+      required bool equipped,
+      required String price}) {
     Color fill, edge;
     String text;
     if (locked) {
-      fill = Rb.panel; edge = Rb.panelEdge; text = '🔒 LOCKED';
+      fill = Rb.panel;
+      edge = Rb.panelEdge;
+      text = '\u{1F512} LOCKED';
     } else if (equipped && owned) {
-      fill = Rb.green; edge = Rb.greenEdge; text = '✔ EQUIPPED';
+      fill = Rb.green;
+      edge = Rb.greenEdge;
+      text = '✔ WORN';
     } else if (owned) {
-      fill = Rb.slot; edge = Rb.slateEdge; text = 'OWNED';
-    } else if (item.price == 0) {
-      fill = Rb.neon; edge = Rb.greenEdge; text = 'FREE';
+      fill = Rb.slot;
+      edge = Rb.slateEdge;
+      text = 'OWNED';
+    } else if (price == 'FREE') {
+      fill = Rb.neon;
+      edge = Rb.greenEdge;
+      text = 'FREE';
     } else {
-      fill = Rb.green; edge = Rb.greenEdge; text = '💎 ${item.price}';
+      fill = Rb.green;
+      edge = Rb.greenEdge;
+      text = price;
     }
     return Block(
       color: fill,
       edge: edge,
       depth: 3,
       radius: 8,
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: SizedBox(
         width: double.infinity,
         child: Center(
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: BlockText(text, size: 12, stroke: 3.5),
+            child: BlockText(text, size: 11, stroke: 3),
           ),
         ),
       ),
     );
   }
 
-  Widget _lockMask(ShopItem item, _ShopData s) {
-    return Container(
-      color: const Color(0xEE3A3D40),
-      padding: const EdgeInsets.all(5),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.lock, color: Colors.white, size: 22),
-            const SizedBox(height: 3),
-            BlockText(
-              item.lockLabel(s.totalKm, s.level),
-              size: 8.5,
-              stroke: 3,
-              align: TextAlign.center,
-            ),
-            const SizedBox(height: 5),
-            BlockBar(value: _progress(item, s), height: 7, color: Rb.neon),
-          ],
-        ),
-      ),
+  Widget _itemTile(HeroItem i, _Data s, BodyTier tier) {
+    final owned = _ownedItem(i, s);
+    final locked = _ruleLockedItem(i, s);
+    return _tile(
+      art: _itemArt(i, tier),
+      name: i.name,
+      r: _rarity(i.rarity),
+      equipped: _outD[i.slot.name] == i.id,
+      owned: owned,
+      locked: locked,
+      lockText: i.rule.label,
+      lockProgress: locked ? _progress(i.rule, s.p) : null,
+      priceText: _priceText(i),
+      onTap: () => _onItemTap(i, s),
     );
   }
 
-  /// Dim scrim + padlock on a premium item the player has not bought yet
-  /// (the art stays visible so it can still be tried on).
-  Widget _premiumLock() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: Color(0x553A3D40)),
-        Align(
-          alignment: Alignment.topRight,
-          child: Container(
-            margin: const EdgeInsets.all(4),
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: Colors.black87,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.lock, color: Rb.gold, size: 15),
-          ),
-        ),
-      ],
+  Widget _heroTile(HeroDef h, _Data s, BodyTier tier) {
+    final owned = _ownedHero(h, s);
+    final locked = _ruleLockedHero(h, s);
+    final price = h.gemPrice > 0 ? '${h.gemPrice} \u{1F48E}' : (h.starter ? 'FREE' : 'EARN');
+    return _tile(
+      art: _heroArt(h, tier),
+      name: h.name,
+      r: _rarity(h.starter ? 0 : (h.gemPrice > 0 ? 2 : 1)),
+      equipped: _heroD == h.id,
+      owned: owned,
+      locked: locked,
+      lockText: h.rule.label,
+      lockProgress: locked ? _progress(h.rule, s.p) : null,
+      priceText: price,
+      onTap: () => _onHeroTap(h, s),
     );
   }
 
-  /// Standalone preview of just the item's asset.
-  Widget _preview(ShopItem item, _ShopData s) {
-    if (item.category == ShopCategory.backgrounds) {
-      return BlockBackground(id: item.id);
-    }
-    if (item.asset == null && item.category != ShopCategory.colors) {
-      return Center(child: Text(item.emoji, style: const TextStyle(fontSize: 44)));
-    }
-    switch (item.category) {
-      case ShopCategory.colors:
-        return Center(
-          child: Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: _hex(item.colorHex!),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.black, width: 3),
-              boxShadow: const [BoxShadow(color: Colors.black54, offset: Offset(0, 4))],
-            ),
-            child: const Center(child: Text('💇', style: TextStyle(fontSize: 24))),
-          ),
-        );
-      case ShopCategory.hair:
-        return ShopCropImage(path: item.asset!, focusX: 141, focusY: 112, zoom: 1.0);
-      case ShopCategory.faces:
-        return ShopCropImage(path: item.asset!, focusX: 142.5, focusY: 178, zoom: 1.9);
-      default: // clothes: show the version made for the hero's body
-        final mine = clothesAssetFor(s.bodyId, item.id, gender: s.gender);
-        return ShopCropImage(
-          path: mine.isEmpty ? item.asset! : mine,
-          fallbackPath: item.asset,
-          focusX: 142.5,
-          focusY: 252,
-          zoom: 0.55,
-        );
-    }
-  }
+  // ───────────────────────── preview panel ─────────────────────────
 
-  // ───────────────────────── avatar preview panel ─────────────────────────
-
-  Widget _buildPreviewPanel(_ShopData s, String uid, {required bool wide}) {
+  Widget _buildPreviewPanel(_Data s, String uid, BodyTier tier, {required bool wide}) {
     final items = _draftItems();
     final cost = _cost(s);
 
@@ -1251,15 +1097,15 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       return Block(
         color: Rb.slate,
         edge: Rb.slateEdge,
-        depth: 6,
-        radius: 18,
-        padding: const EdgeInsets.all(12),
+        depth: 5,
+        radius: 16,
+        padding: const EdgeInsets.all(10),
         child: Column(
           children: [
-            _buildLiveAvatar(s, width: double.infinity, height: 380),
-            const SizedBox(height: 10),
-            _buildSummary(items, cost, s, height: 120),
-            const SizedBox(height: 10),
+            _buildLiveHero(s, tier, width: double.infinity, height: 250),
+            const SizedBox(height: 8),
+            _buildSummary(items, cost, s, height: 96),
+            const SizedBox(height: 8),
             _buildActionRow(s, uid),
           ],
         ),
@@ -1269,19 +1115,19 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     return Block(
       color: Rb.slate,
       edge: Rb.slateEdge,
-      depth: 6,
-      radius: 18,
-      padding: const EdgeInsets.all(10),
+      depth: 5,
+      radius: 16,
+      padding: const EdgeInsets.all(8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildLiveAvatar(s, width: 112, height: 176),
-          const SizedBox(width: 10),
+          _buildLiveHero(s, tier, width: 96, height: 150),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               children: [
-                _buildSummary(items, cost, s, height: 92),
-                const SizedBox(height: 8),
+                _buildSummary(items, cost, s, height: 78),
+                const SizedBox(height: 6),
                 _buildActionRow(s, uid),
               ],
             ),
@@ -1291,11 +1137,20 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  /// Cancel (red) + Save/Buy (state-aware), like the Roblox editor.
-  Widget _buildActionRow(_ShopData s, String uid) {
+  String _costText(({int coins, int gems}) c) {
+    final parts = <String>[];
+    if (c.coins > 0) parts.add('${_fmt(c.coins)} \u{1FA99}');
+    if (c.gems > 0) parts.add('${_fmt(c.gems)} \u{1F48E}');
+    return parts.isEmpty ? '0' : parts.join(' + ');
+  }
+
+  Widget _buildActionRow(_Data s, String uid) {
     final cost = _cost(s);
     final changed = _changed(s);
-    final broke = cost > s.gems;
+    final needCoins = cost.coins - s.p.coins;
+    final needGems = cost.gems - s.p.gems;
+    final broke = needCoins > 0 || needGems > 0;
+    final lockedName = _lockedInDraft(s);
 
     String label;
     String? sub;
@@ -1303,28 +1158,29 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     VoidCallback? onTap;
     if (_buying) {
       label = 'SAVING…';
-      fill = Rb.panel; edge = Rb.panelEdge;
-    } else if (_lockedInDraft(s) != null) {
-      final l = _lockedInDraft(s)!;
-      label = l.unlockLevel > s.level
-          ? '🔒 LV ${l.unlockLevel}'
-          : '🔒 ${_kmText(l.unlockKm)} KM';
-      sub = 'Remove ${l.name}';
-      fill = const Color(0xFF4A4F55); edge = Rb.panelEdge;
+      fill = Rb.panel;
+      edge = Rb.panelEdge;
+    } else if (lockedName != null) {
+      label = '\u{1F512} LOCKED';
+      sub = 'Remove $lockedName';
+      fill = const Color(0xFF4A4F55);
+      edge = Rb.panelEdge;
     } else if (!changed) {
-      label = 'SAVE';
-      sub = 'Tap items to try on';
-      fill = Rb.panel; edge = Rb.panelEdge;
-    } else if (cost == 0) {
-      label = 'OWNED';
-      sub = 'Equip in GEAR';
-      fill = Rb.panel; edge = Rb.panelEdge;
+      label = 'SAVED';
+      sub = 'Tap to try on';
+      fill = Rb.panel;
+      edge = Rb.panelEdge;
     } else if (broke) {
-      label = 'NEED ${_fmt(cost - s.gems)} 💎';
-      fill = Rb.red; edge = Rb.redEdge;
+      label = needGems > 0 ? 'NEED ${_fmt(needGems)} \u{1F48E}' : 'NEED ${_fmt(needCoins)} \u{1FA99}';
+      fill = Rb.red;
+      edge = Rb.redEdge;
+    } else if (cost.coins == 0 && cost.gems == 0) {
+      label = 'SAVE';
+      sub = 'Wear this look';
+      onTap = () => _purchase(uid);
     } else {
       label = 'BUY';
-      sub = '💎 ${_fmt(cost)}';
+      sub = _costText(cost);
       onTap = () => _purchase(uid);
     }
 
@@ -1335,30 +1191,27 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
           child: PressBlock(
             color: changed && !_buying ? Rb.red : Rb.panel,
             edge: changed && !_buying ? Rb.redEdge : Rb.panelEdge,
-            depth: 6,
-            radius: 20,
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            depth: 4,
+            radius: 16,
+            padding: const EdgeInsets.symmetric(vertical: 9),
             onTap: changed && !_buying
                 ? () => setState(() {
-                      _hair = s.hair;
-                      _face = s.face;
-                      _clothes = s.clothes;
-                      _bg = s.bg;
-                      _hairColor = s.hairColor;
+                      _heroD = s.heroId;
+                      _outD = Map<String, String>.of(s.outfit);
                     })
                 : null,
-            child: const Center(child: BlockText('CANCEL', size: 14, stroke: 3.5)),
+            child: const Center(child: BlockText('CANCEL', size: 12, stroke: 3)),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(
           flex: 5,
           child: PressBlock(
             color: fill,
             edge: edge,
-            depth: 6,
-            radius: 20,
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            depth: 4,
+            radius: 16,
+            padding: const EdgeInsets.symmetric(vertical: 5),
             onTap: onTap,
             child: SizedBox(
               width: double.infinity,
@@ -1367,12 +1220,12 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
                 children: [
                   FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: BlockText(label, size: 15, stroke: 4),
+                    child: BlockText(label, size: 13, stroke: 3.5),
                   ),
                   if (sub != null)
                     FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: BlockText(sub, size: 9.5, stroke: 2.5),
+                      child: BlockText(sub, size: 9, stroke: 2.5),
                     ),
                 ],
               ),
@@ -1383,54 +1236,33 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  /// Live 286x512 AvatarPreview with the draft look + chosen background.
-  Widget _buildLiveAvatar(_ShopData s,
+  /// The hero, moving, wearing the draft look, on the chosen background.
+  Widget _buildLiveHero(_Data s, BodyTier tier,
       {required double width, required double height}) {
     return Block(
       color: const Color(0xFF8FD0FF),
       edge: Colors.black,
-      depth: 4,
-      radius: 14,
+      depth: 3,
+      radius: 12,
       padding: EdgeInsets.zero,
       child: SizedBox(
         width: width,
         height: height,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(10),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              BlockBackground(id: _bg),
+              BlockBackground(id: s.bg),
               Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 2),
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  clipBehavior: Clip.none,
-                  child: SizedBox(
-                    width: kSpriteWidth,
-                    height: kSpriteHeight + 48,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned(
-                          left: 0,
-                          top: 44,
-                          width: kSpriteWidth,
-                          height: kSpriteHeight,
-                          child: AvatarPreview(
-                            bodySize: s.bodyId,
-                            expression: _face,
-                            hairStyle: _hair,
-                            activeGear: _clothes,
-                            skinTone: s.skinTone,
-                            hairColor: _hairColor,
-                            gender: s.gender,
-                            // drawn small, so filter instead of dropping pixels
-                            filterQuality: FilterQuality.medium,
-                          ),
-                        ),
-                      ],
-                    ),
+                padding: const EdgeInsets.only(top: 6, bottom: 4),
+                child: Center(
+                  child: HeroRig(
+                    heroId: _heroD,
+                    tier: tier,
+                    pose: RigPose.idle,
+                    height: height - 12,
+                    outfit: _outD,
                   ),
                 ),
               ),
@@ -1441,14 +1273,15 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  Widget _buildSummary(List<ShopItem> items, int cost, _ShopData s,
+  Widget _buildSummary(List<HeroItem> items, ({int coins, int gems}) cost, _Data s,
       {required double height}) {
+    final hero = heroById(_heroD);
     return Block(
       color: Rb.panel,
       edge: Rb.panelEdge,
-      depth: 4,
-      radius: 14,
-      padding: const EdgeInsets.all(10),
+      depth: 3,
+      radius: 12,
+      padding: const EdgeInsets.all(8),
       child: SizedBox(
         height: height,
         child: Column(
@@ -1458,45 +1291,22 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
+                  if (hero != null)
+                    _sumRow(const PixelIcon(AppIcons.hero, size: 16), hero.name,
+                        _ownedHero(hero, s) ? 'OWNED' : '${hero.gemPrice} \u{1F48E}',
+                        _ownedHero(hero, s)),
                   for (final i in items)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        children: [
-                          Text(_catIcon(i.category), style: const TextStyle(fontSize: 13)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              i.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            _isOwned(i, s) ? 'OWNED' : '💎 ${i.price}',
-                            style: TextStyle(
-                              color: _isOwned(i, s) ? Rb.neon : Rb.gold,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _sumRow(PixelIcon(i.iconPath, size: 16), i.name,
+                        _ownedItem(i, s) ? 'OWNED' : _priceText(i), _ownedItem(i, s)),
                 ],
               ),
             ),
-            const Divider(color: Colors.black54, thickness: 2, height: 8),
+            const Divider(color: Colors.black54, thickness: 2, height: 6),
             Row(
               children: [
-                const BlockText('TOTAL', size: 11, stroke: 3),
+                const BlockText('TOTAL', size: 10.5, stroke: 3),
                 const Spacer(),
-                BlockText('💎 ${_fmt(cost)}', size: 13, stroke: 3.5, color: Rb.gold),
+                BlockText(_costText(cost), size: 11.5, stroke: 3, color: Rb.gold),
               ],
             ),
           ],
@@ -1505,70 +1315,87 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  String _catIcon(ShopCategory c) => _cats.firstWhere((e) => e.$1 == c).$2;
+  Widget _sumRow(Widget icon, String name, String right, bool owned) => Padding(
+        padding: const EdgeInsets.only(bottom: 3),
+        child: Row(
+          children: [
+            icon,
+            const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+            ),
+            Text(
+              right,
+              style: TextStyle(
+                  color: owned ? Rb.neon : Rb.gold,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900),
+            ),
+          ],
+        ),
+      );
 }
 
-class _TabDef {
-  final ShopCategory? cat; // null = FEATURED
-  final String label;
-  final Color color, edge;
-  const _TabDef(this.cat, this.label, this.color, this.edge);
-}
-
-const List<_TabDef> _tabs = [
-  _TabDef(null, 'FEATURED', Color(0xFF7B4DFF), Color(0xFF3A1F8F)),
-  _TabDef(ShopCategory.hair, 'HAIR', Color(0xFFE5484D), Color(0xFF7A1C20)),
-  _TabDef(ShopCategory.colors, 'COLORS', Color(0xFFFF7A00), Color(0xFF8F3F00)),
-  _TabDef(ShopCategory.clothes, 'CLOTHING', Color(0xFF00B06F), Color(0xFF006B44)),
-  _TabDef(ShopCategory.faces, 'FACES', Color(0xFF9B59FF), Color(0xFF4B2A8A)),
-];
-
-// ───────────────────────── Cropped asset preview ─────────────────────────
-
-/// Shows part of a 286x512 layer PNG: centres on (focusX, focusY) in canvas
-/// pixels, scaled by `zoom` relative to the box width. Used so a hair/face/
-/// outfit PNG (mostly transparent canvas) fills its item box nicely.
-class ShopCropImage extends StatelessWidget {
-  final String path;
-
-  /// Drawn instead when [path] is missing from the project.
-  final String? fallbackPath;
-  final double focusX, focusY, zoom;
-
-  const ShopCropImage({
-    required this.path,
-    this.fallbackPath,
-    required this.focusX,
-    required this.focusY,
-    required this.zoom,
+/// Close-up of one item worn by a hero, for shop and wardrobe cards.
+/// Shows part of the 286x512 hero picture, centred on where the item sits.
+class ItemCrop extends StatelessWidget {
+  final HeroItem item;
+  final String heroId;
+  final BodyTier tier;
+  const ItemCrop({
+    super.key,
+    required this.item,
+    required this.heroId,
+    required this.tier,
   });
+
+  /// (focusX, focusY, zoom) in canvas pixels, per slot.
+  static (double, double, double) _focus(HeroSlot s) {
+    switch (s) {
+      case HeroSlot.head:
+        return (143, 150, 1.6);
+      case HeroSlot.face:
+        return (143, 178, 2.0);
+      case HeroSlot.top:
+        return (143, 272, 1.7);
+      case HeroSlot.neck:
+        return (143, 240, 1.9);
+      case HeroSlot.bottom:
+        return (143, 392, 1.7);
+      case HeroSlot.shoes:
+        return (143, 462, 2.0);
+      case HeroSlot.back:
+        return (143, 290, 1.1);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final (fx, fy, zoom) = _focus(item.slot);
     return LayoutBuilder(builder: (context, c) {
-      final z = zoom * c.maxWidth / kSpriteWidth;
-      return Stack(
-        children: [
-          Positioned(
-            left: c.maxWidth / 2 - focusX * z,
-            top: c.maxHeight / 2 - focusY * z,
-            width: kSpriteWidth * z,
-            height: kSpriteHeight * z,
-            child: Image.asset(
-              path,
-              fit: BoxFit.fill,
-              filterQuality: FilterQuality.none,
-              errorBuilder: (_, __, ___) => fallbackPath == null
-                  ? const SizedBox.shrink()
-                  : Image.asset(
-                      fallbackPath!,
-                      fit: BoxFit.fill,
-                      filterQuality: FilterQuality.none,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
+      final z = zoom * c.maxWidth / kHeroW;
+      return ClipRect(
+        child: Stack(
+          children: [
+            Positioned(
+              left: c.maxWidth / 2 - fx * z,
+              top: c.maxHeight / 2 - fy * z,
+              width: kHeroW * z,
+              height: kHeroH * z,
+              child: HeroStill(
+                heroId: heroId,
+                tier: tier,
+                outfit: {item.slot.name: item.id},
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     });
   }

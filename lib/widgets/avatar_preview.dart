@@ -5,6 +5,9 @@ import '../models/character_profile.dart';
 import '../models/outfit_catalog.dart';
 import '../state/evolution_state.dart';
 import 'avatar_layer_stack.dart';
+import '../models/hero_items.dart';
+import '../models/hero_roster.dart';
+import 'hero_rig.dart' show HeroStill;
 import 'hero_sprite.dart' show kDefaultClothes;
 
 /// Data-driven avatar. Feed it plain strings from your state / Firestore.
@@ -40,6 +43,13 @@ class AvatarPreview extends StatelessWidget {
   /// Face / hair / outfit are re-fitted automatically for the female sheet.
   final String? gender;
 
+  /// New block hero (users/{uid}.hero_id). When set, the hero art is shown
+  /// instead of the layered classic avatar, in the player's current body form.
+  final String? heroId;
+
+  /// Worn items of the hero (slot name -> item id).
+  final Map<String, String> outfit;
+
   const AvatarPreview({
     super.key,
     required this.bodySize,
@@ -51,6 +61,8 @@ class AvatarPreview extends StatelessWidget {
     this.filterQuality = FilterQuality.none,
     this.ownerUid,
     this.gender,
+    this.heroId,
+    this.outfit = const <String, String>{},
   });
 
   /// Build straight from a Firestore user document map (null-safe).
@@ -80,6 +92,8 @@ class AvatarPreview extends StatelessWidget {
       filterQuality: filterQuality,
       ownerUid: ownerUid,
       gender: p.gender,
+      heroId: heroIdOf(d),
+      outfit: outfitOf(d),
     );
   }
 
@@ -100,6 +114,17 @@ class AvatarPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final owner = ownerUid;
+    final hero = heroId;
+    if (hero != null) {
+      Widget still(BodyTier t) =>
+          HeroStill(heroId: hero, tier: t, outfit: outfit, filterQuality: filterQuality == FilterQuality.none ? FilterQuality.medium : filterQuality);
+      if (owner == null) return still(_tier(bodySize));
+      return ValueListenableBuilder<BodyCompositionState>(
+        valueListenable: EvolutionState.instance.composition,
+        builder: (_, form, __) =>
+            still(EvolutionState.instance.isOwner(owner) ? form.tier : _tier(bodySize)),
+      );
+    }
     if (owner == null) return _stack(_tier(bodySize));
 
     // The signed-in hero: follow the global form (instant, pre-cached PNGs).

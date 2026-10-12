@@ -13,6 +13,8 @@ import 'live_tracker_animation.dart';
 import 'neon_alert_border.dart';
 import 'session_avatar.dart';
 import 'tutorial_keys.dart';
+import 'emoji_icons.dart';
+import 'lottie_fx.dart';
 
 const _yellow = Color(0xFFFFD21F);
 const _yellowEdge = Color(0xFF8A6D00);
@@ -56,6 +58,9 @@ class TrackingView extends StatelessWidget {
   /// pop-up / countdown overlay is drawn on top. Null = no challenges.
   final ChallengeEngine? challenge;
 
+  /// GPS state: 0 timer-only, 1 searching, 2 weak signal, 3 good.
+  final int gpsStatus;
+
   /// Ghost race (your own best run). Null = not racing.
   final GhostRun? ghost;
   final int elapsedSeconds;
@@ -74,9 +79,31 @@ class TrackingView extends StatelessWidget {
     this.clockLeft,
     this.clockLow = false,
     this.challenge,
+    this.gpsStatus = 3,
     this.ghost,
     this.elapsedSeconds = 0,
   });
+
+  Widget _gpsChip() {
+    final (label, c) = switch (gpsStatus) {
+      0 => ('NO GPS \u2022 TIMER ONLY', const Color(0xFF6B7078)),
+      1 => ('SEARCHING GPS...', const Color(0xFFD98E00)),
+      2 => ('WEAK GPS SIGNAL', const Color(0xFFE5784D)),
+      _ => ('GPS READY', const Color(0xFF1E8F55)),
+    };
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(
+          color: c,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.black, width: 2),
+        ),
+        child: BlockText('\u{1F4E1} $label', size: 10, stroke: 2.5),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +169,10 @@ class TrackingView extends StatelessWidget {
                 ),
               ],
             ),
+            if (gpsStatus != 3) ...[
+              const SizedBox(height: 8),
+              _gpsChip(),
+            ],
             if (ghost != null) ...[
               const SizedBox(height: 10),
               _ghostBanner(ghost!),
@@ -191,6 +222,44 @@ class TrackingView extends StatelessWidget {
   /// Mode banner under the header: Stage = rank + map + target bar + clock,
   /// Endless = a calm "just run" strip.
   Widget _modeStrip(RunMode m) {
+    if (m.isInterval) {
+      final ph = RunMode.intervalAt(elapsedSeconds);
+      if (ph == null) {
+        return Block(
+          color: m.color,
+          edge: m.edge,
+          depth: 4,
+          radius: 12,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: const BlockText('\u26A1 INTERVALS DONE!',
+              size: 14, stroke: 3.5, align: TextAlign.center),
+        );
+      }
+      final fast = ph.fast;
+      return Block(
+        color: fast ? Rb.orange : Rb.blue,
+        edge: fast ? Rb.orangeEdge : Rb.blueEdge,
+        depth: 4,
+        radius: 12,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: BlockText(
+                    fast ? '\u26A1 FAST! RUN HARD' : 'EASY \u2022 WALK / JOG',
+                    size: 15,
+                    stroke: 4),
+              ),
+            ),
+            BlockText('R${ph.round}/${RunMode.intervalRounds}  0:${ph.secondsLeft.toString().padLeft(2, '0')}',
+                size: 13, stroke: 3.5),
+          ],
+        ),
+      );
+    }
     if (m.isEndless) {
       return Block(
         color: m.color,
@@ -275,7 +344,7 @@ class TrackingView extends StatelessWidget {
                 Positioned(
                   left: x,
                   top: 0,
-                  child: Text(icon, style: const TextStyle(fontSize: 15)),
+                  child: EmojiText(icon, style: const TextStyle(fontSize: 15)),
                 ),
               ],
             );
@@ -437,6 +506,9 @@ Future<void> showFinishDialog(
 class SessionSummarySheet extends StatelessWidget {
   final ActivitySession session;
   final bool isSaving;
+
+  /// True when the run could not be sent (offline) and waits on the phone.
+  final bool queued;
   final List<DailyQuest> completedQuests;
   final VoidCallback onDone;
 
@@ -469,6 +541,7 @@ class SessionSummarySheet extends StatelessWidget {
     super.key,
     required this.session,
     required this.isSaving,
+    this.queued = false,
     required this.completedQuests,
     required this.onDone,
     this.challenges = const [],
@@ -486,6 +559,23 @@ class SessionSummarySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Confetti + stars on a cleared stage or a finished Endless run.
+    final celebrate = outcomeGood ||
+        (mode?.isEndless ?? true) ||
+        completedQuests.isNotEmpty ||
+        unlockedRank != null;
+    return Stack(
+      children: [
+        _sheet(context),
+        if (celebrate)
+          const Positioned.fill(
+            child: FxOnce(Fx.confetti, fit: BoxFit.cover),
+          ),
+      ],
+    );
+  }
+
+  Widget _sheet(BuildContext context) {
     final totalCrystals =
         completedQuests.fold<int>(0, (s, q) => s + q.crystalReward);
     final (tc, te) = _typeColors(session.type);
@@ -528,11 +618,11 @@ class SessionSummarySheet extends StatelessWidget {
                           Positioned(
                               left: 8,
                               top: 8,
-                              child: Text('✨', style: TextStyle(fontSize: 20))),
+                              child: EmojiText('✨', style: TextStyle(fontSize: 20))),
                           Positioned(
                               right: 8,
                               top: 14,
-                              child: Text('🎉', style: TextStyle(fontSize: 20))),
+                              child: EmojiText('🎉', style: TextStyle(fontSize: 20))),
                           Positioned(
                             bottom: 6,
                             child: const SessionAvatar(
@@ -562,6 +652,23 @@ class SessionSummarySheet extends StatelessWidget {
                 if (mode != null) ...[
                   const SizedBox(height: 10),
                   _modeRow(mode!),
+                ],
+                if (queued) ...[
+                  const SizedBox(height: 10),
+                  Block(
+                    color: const Color(0xFF6B7078),
+                    edge: const Color(0xFF1B1D20),
+                    depth: 3,
+                    radius: 10,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 7),
+                    child: const BlockText(
+                        '\u{1F4E1} NO CONNECTION: run saved on your phone.\n'
+                        'It sends by itself when you are back online.',
+                        size: 10.5,
+                        stroke: 3,
+                        align: TextAlign.center),
+                  ),
                 ],
                 if (unlockedRank != null) ...[
                   const SizedBox(height: 10),
@@ -628,8 +735,18 @@ class SessionSummarySheet extends StatelessWidget {
                       Flexible(
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: BlockText('🪙 +${session.coinsEarned} COINS',
-                              size: 17, stroke: 4.5),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                  width: 34,
+                                  height: 34,
+                                  child: FxLoop(Fx.coinSpin)),
+                              const SizedBox(width: 2),
+                              BlockText('+${session.coinsEarned} COINS',
+                                  size: 17, stroke: 4.5),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -669,8 +786,11 @@ class SessionSummarySheet extends StatelessWidget {
                                 child: BlockText(q.title,
                                     size: 12, stroke: 3, color: q.color),
                               ),
-                              BlockText('+${q.crystalReward} 💎',
+                              BlockText('+${q.crystalReward}',
                                   size: 12, stroke: 3),
+                              const SizedBox(width: 2),
+                              const SizedBox(
+                                  width: 24, height: 24, child: FxOnce(Fx.gemPop)),
                             ]),
                           ),
                         if (completedQuests.length > 1)
@@ -857,7 +977,10 @@ class SessionSummarySheet extends StatelessWidget {
       radius: 12,
       gloss: true,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      child: SizedBox(
+      child: Stack(children: [
+        const Positioned.fill(
+            child: FxOnce(Fx.unlockBurst, fit: BoxFit.cover)),
+        SizedBox(
         width: double.infinity,
         child: Column(
           children: [
@@ -869,19 +992,29 @@ class SessionSummarySheet extends StatelessWidget {
             const SizedBox(height: 2),
             BlockText('${r.mapName}  \u2022  ${r.multLabel} rewards',
                 size: 10.5, stroke: 3, align: TextAlign.center),
+            if (r.requiresId == kNovice.id) ...[
+              const SizedBox(height: 2),
+              BlockText('\u267E\uFE0F ENDLESS & \u26A1 INTERVAL RUN are open now too!',
+                  size: 10.5, stroke: 3, align: TextAlign.center, color: Rb.neon),
+            ],
           ],
         ),
       ),
+      ]),
     );
   }
 
   Widget _modeRow(RunMode m) {
     final head = m.isEndless
         ? '\u267E\uFE0F ENDLESS RUN'
-        : (outcome ?? m.name);
+        : m.isInterval
+            ? '\u26A1 ${outcome ?? 'INTERVAL RUN'}'
+            : (outcome ?? m.name);
     final sub = m.isEndless
         ? '+${m.multLabel} XP & Crystals per km'
-        : '${m.emoji} ${m.name} \u2022 ${m.mapName} \u2022 ${m.multLabel} rewards';
+        : m.isInterval
+            ? '${m.name} \u2022 ${m.multLabel} rewards'
+            : '${m.emoji} ${m.name} \u2022 ${m.mapName} \u2022 ${m.multLabel} rewards';
     return Block(
       color: outcomeGood ? const Color(0xFF1E6B45) : m.color,
       edge: outcomeGood ? const Color(0xFF0B2E1D) : m.edge,

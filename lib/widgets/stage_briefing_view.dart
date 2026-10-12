@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/run_mode.dart';
 import 'block_ui.dart';
+import 'emoji_icons.dart';
 
 /// "Stage Briefing" card shown after a rank is picked and before the warm-up:
 /// the map, the target, the clock, what events to expect, and the star goals.
@@ -228,7 +229,7 @@ class StageBriefingView extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
           child: Column(
             children: [
-              Text(icon, style: const TextStyle(fontSize: 20)),
+              EmojiText(icon, style: const TextStyle(fontSize: 20)),
               const SizedBox(height: 2),
               FittedBox(
                 fit: BoxFit.scaleDown,

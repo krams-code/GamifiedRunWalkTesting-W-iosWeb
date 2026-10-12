@@ -5,7 +5,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'avatar_layer_stack.dart';
+import '../models/body_composition.dart';
+import '../models/character_profile.dart';
+import '../models/hero_items.dart';
+import '../models/hero_roster.dart';
+import '../state/evolution_state.dart';
 import 'avatar_preview.dart';
+import 'hero_rig.dart' show HeroStill;
+import '../state/user_doc.dart';
 
 enum AvatarStance { idle, running, victory }
 
@@ -75,6 +82,25 @@ class _SessionAvatarState extends State<SessionAvatar>
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
   Widget _sprite(Map<String, dynamic>? data) {
+    final hero = heroIdOf(data);
+    if (hero != null) {
+      // hero art is 286x512; the stance animation below moves it as one piece
+      return ValueListenableBuilder<BodyCompositionState>(
+        valueListenable: EvolutionState.instance.composition,
+        builder: (_, form, __) => FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: kSpriteWidth,
+            height: kSpriteHeight + 44,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 44),
+              child: HeroStill(
+                  heroId: hero, tier: form.tier, outfit: outfitOf(data)),
+            ),
+          ),
+        ),
+      );
+    }
     // 286x560 world: 44px headroom so tall hair is never clipped.
     return FittedBox(
       fit: BoxFit.contain,
@@ -106,12 +132,9 @@ class _SessionAvatarState extends State<SessionAvatar>
     final uid = _uid;
     final h = widget.height;
 
-    final stream = uid == null
-        ? null
-        : FirebaseFirestore.instance.collection('users').doc(uid).snapshots();
-
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: stream,
+      stream: uid == null ? null : UserDoc.instance.stream,
+      initialData: UserDoc.instance.snapshotFor(uid),
       builder: (context, snap) {
         final sprite = _sprite(snap.data?.data());
         return SizedBox(

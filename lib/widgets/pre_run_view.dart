@@ -12,6 +12,7 @@ import 'block_ui.dart';
 import 'mode_select_panel.dart';
 import 'pixel_icon.dart';
 import 'tutorial_keys.dart';
+import '../state/user_doc.dart';
 
 // ═════════════════════════════════════════════════════════════════
 //  Roblox-style "Start Session" view
@@ -87,9 +88,8 @@ class PreRunView extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: uid == null
-          ? null
-          : FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      stream: uid == null ? null : UserDoc.instance.stream,
+      initialData: UserDoc.instance.snapshotFor(uid),
       builder: (context, snap) {
         final data = snap.data?.data();
         final totalKm = (data?['total_km'] as num?)?.toDouble() ?? 0.0;
@@ -547,7 +547,11 @@ class PreRunView extends StatelessWidget {
         top: false,
         child: SizedBox(
           width: double.infinity,
-          child: PressBlock(
+          child: _FirstModeGate(
+            records: records,
+            seen: seen,
+            onStart: onStart,
+            child: PressBlock(
             key: TutorialKeys.playStage,
             color: _green,
             edge: _greenEdge,
@@ -564,10 +568,68 @@ class PreRunView extends StatelessWidget {
             },
             child: const Center(child: BlockText('▶ PLAY STAGE', size: 26, stroke: 5)),
           ),
+          ),
         ),
       ),
     );
   }
+}
+
+/// Wraps the PLAY STAGE button. When the walkthrough ends for a brand-new
+/// hero it opens the Mode panel in "first run" mode (NOVICE is the only
+/// choice, and the panel can't be dismissed).
+class _FirstModeGate extends StatefulWidget {
+  final Object? records;
+  final Object? seen;
+  final ValueChanged<RunMode> onStart;
+  final Widget child;
+  const _FirstModeGate({
+    required this.records,
+    required this.seen,
+    required this.onStart,
+    required this.child,
+  });
+
+  @override
+  State<_FirstModeGate> createState() => _FirstModeGateState();
+}
+
+class _FirstModeGateState extends State<_FirstModeGate> {
+  bool _open = false;
+
+  @override
+  void initState() {
+    super.initState();
+    TutorialKeys.firstModeRequest.addListener(_check);
+    if (TutorialKeys.firstModePending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+    }
+  }
+
+  @override
+  void dispose() {
+    TutorialKeys.firstModeRequest.removeListener(_check);
+    super.dispose();
+  }
+
+  Future<void> _check() async {
+    if (!mounted || _open || !TutorialKeys.firstModePending) return;
+    _open = true;
+    TutorialKeys.firstModePending = false;
+    final mode = await showModeSelectPanel(
+      context,
+      records: widget.records is Map<String, dynamic>
+          ? widget.records as Map<String, dynamic>
+          : null,
+      seen: widget.seen,
+      firstRun: true,
+    );
+    _open = false;
+    if (mode != null && mounted) widget.onStart(mode);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 // ───────────────────────── Decor ─────────────────────────

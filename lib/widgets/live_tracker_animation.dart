@@ -7,14 +7,18 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../models/character_profile.dart';
+import '../models/hero_items.dart';
+import '../models/hero_roster.dart';
 import '../models/outfit_catalog.dart';
 import '../state/evolution_state.dart';
 import 'avatar_layer_stack.dart';
 import 'avatar_preview.dart';
 import 'block_ui.dart';
 import 'game_stage.dart' show SceneBackPainter;
+import 'hero_rig.dart' show HeroRig, RigPose, kHeroH;
 import 'hero_sprite.dart' show kDefaultClothes;
 import 'map_backdrop.dart';
+import '../state/user_doc.dart';
 
 // ───────────────────────── state machine ─────────────────────────
 
@@ -259,10 +263,8 @@ class _LiveTrackerAnimationState extends State<LiveTrackerAnimation>
         child: widget.avatarData != null || uid == null
             ? scene(widget.avatarData)
             : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(uid)
-                    .snapshots(),
+                stream: UserDoc.instance.stream,
+                initialData: UserDoc.instance.snapshotFor(uid),
                 builder: (_, snap) => scene(snap.data?.data()),
               ),
       ),
@@ -287,6 +289,7 @@ class _LiveTrackerAnimationState extends State<LiveTrackerAnimation>
         ? rawClothes.whereType<String>().toList()
         : kDefaultClothes;
     final gearId = clothes.isEmpty ? '' : animGearId(clothes.first);
+    final heroId = heroIdOf(d);
 
     return LayoutBuilder(builder: (context, c) {
       final w = c.maxWidth, h = c.maxHeight;
@@ -342,14 +345,16 @@ class _LiveTrackerAnimationState extends State<LiveTrackerAnimation>
             height: avatarH,
             child: ValueListenableBuilder<int>(
               valueListenable: _frame,
-              builder: (_, idx, __) => _runner(
-                idx: idx,
-                tier: tier,
-                p: p,
-                gearId: gearId,
-                data: d,
-                height: avatarH,
-              ),
+              builder: (_, idx, __) => heroId != null
+                  ? _heroRunner(heroId, tier, outfitOf(d))
+                  : _runner(
+                      idx: idx,
+                      tier: tier,
+                      p: p,
+                      gearId: gearId,
+                      data: d,
+                      height: avatarH,
+                    ),
             ),
           ),
 
@@ -364,6 +369,25 @@ class _LiveTrackerAnimationState extends State<LiveTrackerAnimation>
         ],
       );
     });
+  }
+
+  /// New block hero: animated in Flutter (no sprite frames needed).
+  Widget _heroRunner(String heroId, BodyTier tier, Map<String, String> outfit) {
+    final pose = widget.boost
+        ? RigPose.run
+        : RigPose.values[_state.index];
+    return FittedBox(
+      fit: BoxFit.contain,
+      alignment: Alignment.bottomCenter,
+      child: HeroRig(
+        heroId: heroId,
+        tier: tier,
+        pose: pose,
+        outfit: outfit,
+        height: kHeroH,
+        shadow: false, // the scene already draws the ground shadow
+      ),
+    );
   }
 
   Widget _runner({

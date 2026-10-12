@@ -1,27 +1,25 @@
-import '../screens/shop/avatar_shop_screen.dart' show kShopCatalog, ShopItem;
+import '../models/hero_items.dart';
 import 'player_stats.dart';
 
-/// What the EXP bar's sub-text says. Driven by the REAL shop catalog: any
-/// free item with `unlockLevel > 1` is an XP milestone reward, and
-/// `isShopItemUnlocked` unlocks it automatically at that level.
+/// What the EXP bar's sub-text says. Driven by the hero item catalog: any
+/// free item gated by a level rule is an XP milestone reward.
 class XpMilestone {
   final String text;
-  final ShopItem? item;
+  final HeroItem? item;
   const XpMilestone(this.text, this.item);
 }
 
-/// The next free (XP-gated) item above [level], or a plain XP target.
+/// The next free (level-gated) item above the player's level, or a plain XP target.
 XpMilestone nextXpMilestone(int totalXp) {
   final lv = LevelProgress.fromXp(totalXp);
-  ShopItem? next;
-  for (final i in kShopCatalog) {
-    if (i.price == 0 && i.unlockLevel > lv.level) {
-      if (next == null || i.unlockLevel < next.unlockLevel) next = i;
-    }
+  HeroItem? next;
+  for (final i in kHeroItems) {
+    if (!i.isEarned || i.rule.level <= lv.level) continue;
+    if (next == null || i.rule.level < next.rule.level) next = i;
   }
   if (next != null) {
     return XpMilestone(
-        'Next Free Item: ${next.name} at Level ${next.unlockLevel}!', next);
+        'Next Free Item: ${next.name} at Level ${next.rule.level}!', next);
   }
   final need = lv.xpNeeded - lv.xpIntoLevel;
   return XpMilestone('Earn $need XP to clear Milestone ${lv.level}!', null);

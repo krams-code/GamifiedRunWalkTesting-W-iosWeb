@@ -39,7 +39,7 @@ class HeroBust extends StatelessWidget {
                     maxHeight: double.infinity,
                     child: Transform.translate(
                       offset: Offset(0, size * 0.2),
-                      child: HeroSprite.fromData(data, height: size * 2.4),
+                      child: HeroSprite.fromData(data, height: size * 2.4, bust: true),
                     ),
                   ),
                 ),

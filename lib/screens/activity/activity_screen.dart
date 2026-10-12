@@ -7,6 +7,8 @@ import '../../models/activity_model.dart';
 import '../../constants/app_icons.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/pixel_icon.dart';
+import '../../widgets/emoji_icons.dart';
+import '../../widgets/lottie_fx.dart';
 
 /// Roblox block-style Activity log.
 class ActivityScreen extends StatefulWidget {
@@ -17,6 +19,9 @@ class ActivityScreen extends StatefulWidget {
 }
 
 class _ActivityScreenState extends State<ActivityScreen> {
+  // Created once (not in build) so rebuilds don't reconnect the listener.
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _activities;
+
   ActivityType? _filter;
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
@@ -42,7 +47,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         child: uid == null
             ? const Center(child: BlockText('SIGN IN TO SEE ACTIVITY', size: 16))
             : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
+                stream: _activities ??= FirebaseFirestore.instance
                     .collection('users')
                     .doc(uid)
                     .collection('activities')
@@ -54,8 +59,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                         'Check your connection and try again.');
                   }
                   if (!snap.hasData) {
-                    return const Center(
-                        child: CircularProgressIndicator(color: Rb.gold));
+                    return const LoadingRunner();
                   }
                   final all = <ActivitySession>[];
                   for (final d in snap.data!.docs) {
@@ -191,7 +195,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
               radius: 12,
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
               child: Column(children: [
-                Text(emoji, style: const TextStyle(fontSize: 20)),
+                EmojiText(emoji, style: const TextStyle(fontSize: 20)),
                 FittedBox(
                     fit: BoxFit.scaleDown,
                     child: BlockText(value, size: 18, stroke: 4)),
@@ -380,7 +384,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
               height: 46,
               child: Center(
                   child:
-                      Text(s.type.emoji, style: const TextStyle(fontSize: 24))),
+                      EmojiText(s.type.emoji, style: const TextStyle(fontSize: 24))),
             ),
           ),
           const SizedBox(width: 10),
@@ -434,7 +438,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
           depth: 6,
           padding: const EdgeInsets.all(20),
           child: Column(children: [
-            Text(emoji, style: const TextStyle(fontSize: 40)),
+            emoji == '🏃'
+                ? const SizedBox(width: 110, height: 110, child: FxLoop(Fx.runLoader))
+                : EmojiText(emoji, style: const TextStyle(fontSize: 40)),
             const SizedBox(height: 8),
             BlockText(title, size: 16, stroke: 4),
             const SizedBox(height: 4),

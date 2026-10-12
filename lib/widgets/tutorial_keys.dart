@@ -3,6 +3,17 @@ import 'package:flutter/widgets.dart';
 /// GlobalKeys the onboarding tutorial uses to find (and spotlight) real
 /// widgets on screen. Each key must be attached to exactly ONE widget.
 abstract final class TutorialKeys {
+  /// Set when the walkthrough ends for a brand-new hero: the RUN tab then
+  /// opens the Mode panel in "first run" mode (only NOVICE can be picked,
+  /// the panel can't be dismissed).
+  static bool firstModePending = false;
+  static final ValueNotifier<int> firstModeRequest = ValueNotifier<int>(0);
+
+  static void requestFirstMode() {
+    firstModePending = true;
+    firstModeRequest.value++;
+  }
+
   /// The avatar viewport on the RUN tab.
   static final GlobalKey hero = GlobalKey(debugLabel: 'tutorial-hero');
 
