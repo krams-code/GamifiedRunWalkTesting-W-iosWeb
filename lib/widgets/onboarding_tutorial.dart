@@ -66,7 +66,7 @@ final List<_TutorialStep> _steps = [
     TutorialKeys.playStage,
     'RUN TO UNLOCK',
     'Every rank starts locked except NOVICE. Clear NOVICE to unlock '
-        'VANGUARD, INTERVAL RUN and ENDLESS RUN. Clear VANGUARD to unlock SLAYER. You '
+        'VANGUARD, INTERVAL RUN, ENDLESS RUN and DISTANCE TRIALS (2 km up to a marathon). Clear VANGUARD to unlock SLAYER. You '
         'earn your way up, one run at a time!',
     'coach_1.png',
     radius: 22,

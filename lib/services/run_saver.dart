@@ -31,6 +31,9 @@ class RunPayload {
   final int lootChests;
   final int elapsedSeconds;
 
+  /// Interval Run stats: {rounds, fast_km, best_fast_pace_s?}. Null otherwise.
+  final Map<String, dynamic>? interval;
+
   const RunPayload({
     required this.id,
     required this.uid,
@@ -46,6 +49,7 @@ class RunPayload {
     required this.gems,
     required this.lootChests,
     required this.elapsedSeconds,
+    this.interval,
   });
 
   Map<String, dynamic> toJson() => {
@@ -63,6 +67,7 @@ class RunPayload {
         'gems': gems,
         'lootChests': lootChests,
         'elapsedSeconds': elapsedSeconds,
+        'interval': interval,
       };
 
   factory RunPayload.fromJson(Map<String, dynamic> j) => RunPayload(
@@ -82,6 +87,9 @@ class RunPayload {
         gems: (j['gems'] as num?)?.toInt() ?? 0,
         lootChests: (j['lootChests'] as num?)?.toInt() ?? 0,
         elapsedSeconds: (j['elapsedSeconds'] as num?)?.toInt() ?? 0,
+        interval: j['interval'] == null
+            ? null
+            : Map<String, dynamic>.from(j['interval'] as Map),
       );
 }
 
@@ -96,6 +104,9 @@ class RunSaveResult {
   /// True when this run had already been saved before (nothing was written).
   final bool duplicate;
 
+  /// Interval Run: this run beat the player's best FAST pace.
+  final bool intervalNewBest;
+
   const RunSaveResult({
     this.completedQuests = const [],
     this.stars = 0,
@@ -103,6 +114,7 @@ class RunSaveResult {
     this.firstClear = false,
     this.unlockedRank,
     this.duplicate = false,
+    this.intervalNewBest = false,
   });
 }
 
@@ -192,10 +204,23 @@ abstract final class RunSaver {
         records = all;
         crystals += bonus;
         if (first) {
-          for (final m in kRunModes) {
-            if (m.requiresId == mode.id && m.isStage) opened = m;
+          // a rank opens the next rank; a trial opens the next time goal
+          final pool = mode.isTrial ? kTrialModes : kStageModes;
+          for (final m in pool) {
+            if (m.requiresId == mode.id) opened = m;
           }
         }
+      }
+
+      // Interval Run personal bests (lower pace seconds = faster).
+      var newBest = false;
+      final iv = p.interval;
+      final ivPace = (iv?['best_fast_pace_s'] as num?)?.toInt();
+      final ivRounds = (iv?['rounds'] as num?)?.toInt() ?? 0;
+      final oldPace = (data['interval_best_fast_pace_s'] as num?)?.toInt();
+      final oldRounds = (data['interval_best_rounds'] as num?)?.toInt() ?? 0;
+      if (ivPace != null && ivPace > 0 && (oldPace == null || ivPace < oldPace)) {
+        newBest = true;
       }
 
       final fields = Map<String, dynamic>.from(p.fields)
@@ -206,6 +231,7 @@ abstract final class RunSaver {
         ...fields,
         if (p.challenges.isNotEmpty) 'challenges': p.challenges,
         if (p.ghost != null) 'ghost': p.ghost,
+        if (iv != null) 'interval': iv,
         'mode': p.modeId,
         'reward_mult': p.rewardMult,
         if (p.outcome != null) 'stage_result': p.outcome,
@@ -215,6 +241,9 @@ abstract final class RunSaver {
       txn.update(userRef, {
         'total_km': FieldValue.increment(km),
         'total_sessions': FieldValue.increment(1),
+        // Security rules read this to find the run record that justifies the
+        // reward (rewards can never exceed what that record shows).
+        'last_run_id': p.id,
         'xp': FieldValue.increment(p.xp),
         'coins': FieldValue.increment(p.coins),
         if (totalGems > 0) 'gems': FieldValue.increment(totalGems),
@@ -225,6 +254,9 @@ abstract final class RunSaver {
         // feeds "friends this week" on the RUN tab
         ...FriendsService.weekFields(data, km),
         if (records != null) 'stage_records': records,
+        if (iv != null) 'interval_runs': FieldValue.increment(1),
+        if (iv != null && ivRounds > oldRounds) 'interval_best_rounds': ivRounds,
+        if (newBest) 'interval_best_fast_pace_s': ivPace,
       });
 
       result = RunSaveResult(
@@ -233,6 +265,7 @@ abstract final class RunSaver {
         bonusGems: bonus,
         firstClear: first,
         unlockedRank: opened,
+        intervalNewBest: newBest,
       );
     });
 
@@ -245,6 +278,13 @@ abstract final class RunSaver {
 abstract final class RunOutbox {
   static const _key = 'run_outbox_v1';
   static bool _flushing = false;
+
+  /// How many runs are waiting to be sent (drives the SYNC chip).
+  static final ValueNotifier<int> pending = ValueNotifier<int>(0);
+
+  static Future<void> refresh() async {
+    pending.value = (await _load()).length;
+  }
 
   static Future<List<RunPayload>> _load() async {
     try {
@@ -269,6 +309,7 @@ abstract final class RunOutbox {
       final sp = await SharedPreferences.getInstance();
       await sp.setStringList(
           _key, [for (final p in list) jsonEncode(p.toJson())]);
+      pending.value = list.length;
     } catch (e) {
       debugPrint('RunOutbox store failed: $e');
     }
@@ -305,6 +346,7 @@ abstract final class RunOutbox {
         }
       }
       if (sent > 0) await _store(left);
+      pending.value = left.length;
     } finally {
       _flushing = false;
     }

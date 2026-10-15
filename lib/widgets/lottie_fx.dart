@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 
 import 'block_ui.dart';
+import '../services/sound.dart';
 
 /// Lottie effect files (assets/animations/lottie/). Drawn in code to match the
 /// block / jelly art style: see ICON_MAP / the generator notes if you want
@@ -186,6 +187,7 @@ class _LevelUpBurstState extends State<LevelUpBurst> {
   void didUpdateWidget(LevelUpBurst old) {
     super.didUpdateWidget(old);
     if (widget.level > old.level && old.level > 0) {
+      Sound.I.play(Sfx.levelUp);
       _t?.cancel();
       setState(() => _on = true);
       _t = Timer(const Duration(milliseconds: 3600), () {

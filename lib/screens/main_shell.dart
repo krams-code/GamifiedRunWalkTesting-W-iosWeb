@@ -1,3 +1,4 @@
+import '../services/sound.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,7 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     // App-wide body-form state (follows sign-in/out by itself).
     EvolutionState.instance.start();
+    Sound.I.music(Bgm.menu);
     PerfProbe.start(); // frame / jank meter (debug + profile builds only)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _maybeChooseHero();
@@ -73,6 +75,7 @@ class _MainShellState extends State<MainShell> {
   void _navigateTo(int index) {
     if (_isTrackingActive) return; // belt and braces
     if (index == _currentIndex) return;
+    Sound.I.play(Sfx.tab);
     PerfProbe.markNav(_tabNames[index]);
     setState(() {
       _visited.add(index);
@@ -82,6 +85,7 @@ class _MainShellState extends State<MainShell> {
 
   void _onTrackingChanged(bool active) {
     if (_isTrackingActive == active) return;
+    if (!active) Sound.I.music(Bgm.menu); // run is over: back to menu music
     setState(() {
       _isTrackingActive = active;
       if (active) _currentIndex = 2;

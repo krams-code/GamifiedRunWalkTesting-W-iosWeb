@@ -1,3 +1,4 @@
+import 'sync_chip.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -115,6 +116,7 @@ class PreRunView extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     child: Column(
                       children: [
+                        const SyncChip(),
                         _buildBanner(
                           milestone: idx + 1,
                           total: kMilestones.length,

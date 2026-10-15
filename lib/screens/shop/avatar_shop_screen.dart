@@ -8,12 +8,14 @@ import '../../models/character_profile.dart' show BodyTier, BodyCompositionTierX
 import '../../models/hero_items.dart';
 import '../../models/hero_progress.dart';
 import '../../models/hero_roster.dart';
+import '../../services/sound.dart';
 import '../../state/evolution_state.dart';
 import '../../utils/activity_snapshot.dart';
 import '../../utils/weekly.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/hero_rig.dart';
 import '../../widgets/pixel_icon.dart';
+import '../../widgets/unlock_sheet.dart';
 import '../../state/user_doc.dart';
 import '../../widgets/lottie_fx.dart';
 
@@ -137,8 +139,10 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
         txn.update(ref, {
           'gems': FieldValue.increment(gems),
           'streak_claims': FieldValue.arrayUnion([key]),
+          'streak_claim_at': FieldValue.serverTimestamp(), // rules: 1 per day
         });
       });
+      Sound.I.play(Sfx.gem);
       _snack('\u{1F525} $days-day streak reward: +$gems \u{1F48E}');
     } catch (e) {
       _snack(e == 'claimed' ? 'Already claimed.' : 'Claim failed. Try again.');
@@ -177,7 +181,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   bool _ruleLockedItem(HeroItem i, _Data s) => !_ownedItem(i, s) && !i.rule.met(s.p);
   bool _ownedHero(HeroDef h, _Data s) => isHeroUnlocked(h, s.p);
   bool _ruleLockedHero(HeroDef h, _Data s) =>
-      !_ownedHero(h, s) && h.gemPrice == 0;
+      !_ownedHero(h, s) && (h.gemPrice == 0 || !h.rule.met(s.p));
 
   List<HeroItem> _draftItems() {
     final out = <HeroItem>[];
@@ -212,6 +216,21 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     return false;
   }
 
+  /// Opens the "how to unlock" pop-up for the first locked thing in the draft.
+  void _openLockedDraft(_Data s) {
+    final h = heroById(_heroD);
+    if (h != null && _ruleLockedHero(h, s)) {
+      _openHeroSheet(h, s);
+      return;
+    }
+    for (final i in _draftItems()) {
+      if (_ruleLockedItem(i, s)) {
+        _openItemSheet(i, s);
+        return;
+      }
+    }
+  }
+
   /// Name of a previewed thing the player cannot get yet (rank / level locked).
   String? _lockedInDraft(_Data s) {
     final h = heroById(_heroD);
@@ -233,9 +252,75 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       ..showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
   }
 
+  /// Gear is drawn on the human hero only; costume heroes wear their own outfit.
+  void _costumeNotice() {
+    showInfoSheet(
+      context,
+      title: 'COSTUME HERO',
+      message:
+          '${heroById(_heroD)?.name ?? 'This hero'} wears its own outfit, so shop gear is for the human hero SPROUT. Switch to SPROUT to try gear on.',
+      art: HeroStill(heroId: _heroD, tier: BodyTier.normal),
+      actionLabel: 'SWITCH TO SPROUT',
+      onAction: () => setState(() => _heroD = kDefaultHeroId),
+    );
+  }
+
+  void _openHeroSheet(HeroDef h, _Data s) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final goalsDone = h.rule.met(s.p);
+    final price = h.gemPrice > 0 ? '${h.gemPrice} \u{1F48E}' : null;
+    showUnlockSheet(
+      context,
+      title: h.name,
+      kind: '${h.rarityLabel} HERO',
+      art: HeroStill(heroId: h.id, tier: BodyTier.normal),
+      reqs: unlockReqs(h.rule, s.p),
+      priceLabel: price,
+      youHave: price == null ? null : 'You have ${_fmt(s.p.gems)} \u{1F48E}',
+      tip: unlockTip(h.rule, s.p) ??
+          (price != null && s.p.gems < h.gemPrice
+              ? 'Crystals come from daily quests, first rank clears and stars.'
+              : null),
+      canBuy: uid != null && goalsDone && s.p.gems >= h.gemPrice && h.gemPrice > 0,
+      onBuy: uid == null
+          ? null
+          : () {
+              setState(() => _heroD = h.id);
+              _purchase(uid);
+            },
+      accent: h.color,
+      accentEdge: h.edge,
+    );
+  }
+
+  void _openItemSheet(HeroItem i, _Data s) {
+    showUnlockSheet(
+      context,
+      title: i.name,
+      kind: '${_rarity(i.rarity).label} ${i.slot.label} ITEM',
+      art: ItemCrop(item: i, heroId: kDefaultHeroId, tier: BodyTier.normal),
+      reqs: unlockReqs(i.rule, s.p),
+      priceLabel: i.isForSale ? _priceText(i) : null,
+      youHave: !i.isForSale
+          ? null
+          : i.gems > 0
+              ? 'You have ${_fmt(s.p.gems)} \u{1F48E}'
+              : 'You have ${_fmt(s.p.coins)} \u{1FA99}',
+      tip: unlockTip(i.rule, s.p),
+    );
+  }
+
   void _onItemTap(HeroItem item, _Data s) {
+    if (heroIsCostume(_heroD)) {
+      if (_ruleLockedItem(item, s)) {
+        _openItemSheet(item, s);
+      } else {
+        _costumeNotice();
+      }
+      return;
+    }
     if (_ruleLockedItem(item, s)) {
-      _snack('\u{1F440} Trying on ${item.name}: ${item.rule.label ?? 'locked'}');
+      _openItemSheet(item, s); // how to unlock it (you can still try it on)
     }
     setState(() {
       if (_outD[item.slot.name] == item.id) {
@@ -248,7 +333,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
 
   void _onHeroTap(HeroDef h, _Data s) {
     if (_ruleLockedHero(h, s)) {
-      _snack('\u{1F440} Trying on ${h.name}: ${h.rule.label ?? 'locked'}');
+      _openHeroSheet(h, s); // how to unlock it (you can still look at it)
     }
     setState(() => _heroD = h.id);
   }
@@ -291,8 +376,10 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
         if (newHero != null) up['owned_heroes'] = FieldValue.arrayUnion([newHero]);
         txn.update(ref, up);
       });
+      Sound.I.play(Sfx.buy);
       _snack('✅ Look saved!');
     } catch (e) {
+      Sound.I.play(Sfx.error);
       _snack(e == 'gems'
           ? 'Not enough gems!'
           : e == 'coins'
@@ -882,7 +969,10 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       );
 
   Widget _itemArt(HeroItem i, BodyTier tier) =>
-      _frame(ItemCrop(item: i, heroId: _heroD, tier: tier));
+      _frame(ItemCrop(
+          item: i,
+          heroId: heroIsCostume(_heroD) ? kDefaultHeroId : _heroD,
+          tier: tier));
 
   Widget _heroArt(HeroDef h, BodyTier tier) => _frame(
         Padding(
@@ -1076,7 +1166,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     return _tile(
       art: _heroArt(h, tier),
       name: h.name,
-      r: _rarity(h.starter ? 0 : (h.gemPrice > 0 ? 2 : 1)),
+      r: _rarity(h.rarity <= 1 ? 0 : h.rarity - 1),
       equipped: _heroD == h.id,
       owned: owned,
       locked: locked,
@@ -1162,9 +1252,10 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       edge = Rb.panelEdge;
     } else if (lockedName != null) {
       label = '\u{1F512} LOCKED';
-      sub = 'Remove $lockedName';
+      sub = 'Tap to see how to unlock $lockedName';
       fill = const Color(0xFF4A4F55);
       edge = Rb.panelEdge;
+      onTap = () => _openLockedDraft(s);
     } else if (!changed) {
       label = 'SAVED';
       sub = 'Tap to try on';

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/weekly_goal.dart';
+import '../services/sound.dart';
 import '../utils/weekly.dart';
 import 'block_ui.dart';
 
@@ -80,12 +81,14 @@ class _WeeklyGoalCardState extends State<WeeklyGoalCard> {
         if ((snap.data()?['weekly_goal_claimed'] as String?) == key) throw 'done';
         txn.update(_ref, {
           'weekly_goal_claimed': key,
+          'weekly_claim_at': FieldValue.serverTimestamp(), // rules: 1 per week
           'gems': FieldValue.increment(WeeklyGoal.rewardGems),
           'weekly_goal_log.$key.achieved_km': double.parse(g.weekKm.toStringAsFixed(2)),
         });
       });
       if (mounted) {
         setState(() => _claimed = key);
+        Sound.I.play(Sfx.gem);
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(

@@ -7,6 +7,7 @@ import 'package:hakbanghero/models/daily_quest_definitions.dart';
 import '../challenges/challenge_engine.dart';
 import '../models/ghost_run.dart';
 import '../models/run_mode.dart';
+import '../services/sound.dart';
 import 'block_ui.dart';
 import 'challenge_overlay.dart';
 import 'live_tracker_animation.dart';
@@ -128,7 +129,9 @@ class TrackingView extends StatelessWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
+        // On short screens the dashboard scrolls instead of overflowing.
+        child: LayoutBuilder(builder: (context, box) {
+        final col = Column(
           children: [
             // Activity type + elapsed time
             Row(
@@ -214,7 +217,13 @@ class TrackingView extends StatelessWidget {
               child: _HoldToEndButton(onComplete: onFinish),
             ),
           ],
-        ),
+        );
+        const minH = 560.0;
+        if (box.maxHeight >= minH) return col;
+        return SingleChildScrollView(
+          child: SizedBox(height: minH, child: col),
+        );
+        }),
       ),
     );
   }
@@ -509,6 +518,10 @@ class SessionSummarySheet extends StatelessWidget {
 
   /// True when the run could not be sent (offline) and waits on the phone.
   final bool queued;
+
+  /// Interval Run results {rounds, fast_km, best_fast_pace_s?} (else null).
+  final Map<String, dynamic>? intervalStats;
+  final bool intervalNewBest;
   final List<DailyQuest> completedQuests;
   final VoidCallback onDone;
 
@@ -542,6 +555,8 @@ class SessionSummarySheet extends StatelessWidget {
     required this.session,
     required this.isSaving,
     this.queued = false,
+    this.intervalStats,
+    this.intervalNewBest = false,
     required this.completedQuests,
     required this.onDone,
     this.challenges = const [],
@@ -652,6 +667,10 @@ class SessionSummarySheet extends StatelessWidget {
                 if (mode != null) ...[
                   const SizedBox(height: 10),
                   _modeRow(mode!),
+                ],
+                if (intervalStats != null) ...[
+                  const SizedBox(height: 10),
+                  _intervalRow(intervalStats!),
                 ],
                 if (queued) ...[
                   const SizedBox(height: 10),
@@ -843,7 +862,7 @@ class SessionSummarySheet extends StatelessWidget {
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: BlockText(
-                              'NEXT RANK \u25B6  ${unlockedRank!.name}',
+                              'NEXT ${unlockedRank!.isTrial ? 'TRIAL' : 'RANK'} \u25B6  ${unlockedRank!.name}',
                               size: 17,
                               stroke: 4.5),
                         ),
@@ -994,13 +1013,61 @@ class SessionSummarySheet extends StatelessWidget {
                 size: 10.5, stroke: 3, align: TextAlign.center),
             if (r.requiresId == kNovice.id) ...[
               const SizedBox(height: 2),
-              BlockText('\u267E\uFE0F ENDLESS & \u26A1 INTERVAL RUN are open now too!',
+              BlockText('\u267E\uFE0F ENDLESS, \u26A1 INTERVAL & DISTANCE TRIALS are open too!',
                   size: 10.5, stroke: 3, align: TextAlign.center, color: Rb.neon),
             ],
           ],
         ),
       ),
       ]),
+    );
+  }
+
+  static String _paceLabel(int secsPerKm) =>
+      "${secsPerKm ~/ 60}'${(secsPerKm % 60).toString().padLeft(2, '0')}\"";
+
+  Widget _intervalRow(Map<String, dynamic> st) {
+    final rounds = (st['rounds'] as num?)?.toInt() ?? 0;
+    final fastKm = (st['fast_km'] as num?)?.toDouble() ?? 0.0;
+    final pace = (st['best_fast_pace_s'] as num?)?.toInt();
+    Widget cell(String label, String value) => Expanded(
+          child: Column(
+            children: [
+              BlockText(label,
+                  size: 9.5,
+                  stroke: 2.5,
+                  align: TextAlign.center,
+                  color: const Color(0xFFBDEBFF)),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: BlockText(value, size: 16, stroke: 3.5),
+              ),
+            ],
+          ),
+        );
+    return Block(
+      color: const Color(0xFF0B6F8F),
+      edge: const Color(0xFF053A4A),
+      depth: 4,
+      radius: 10,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              cell('ROUNDS', '$rounds/${RunMode.intervalRounds}'),
+              cell('FAST KM', fastKm.toStringAsFixed(2)),
+              cell('BEST FAST PACE', pace == null ? '--' : '${_paceLabel(pace)}/km'),
+            ],
+          ),
+          if (intervalNewBest) ...[
+            const SizedBox(height: 6),
+            const BlockText('\u2B50 NEW PERSONAL BEST FAST PACE!',
+                size: 11, stroke: 3, align: TextAlign.center, color: Rb.gold),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1112,7 +1179,7 @@ class _HoldToEndButtonState extends State<_HoldToEndButton>
       ..addStatusListener((st) {
         if (st == AnimationStatus.completed && !_fired) {
           _fired = true;
-          HapticFeedback.heavyImpact();
+          Sound.I.buzz(3);
           widget.onComplete();
         }
       });

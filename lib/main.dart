@@ -1,8 +1,11 @@
+import 'services/sound.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_shell.dart';
+import 'screens/startup_screen.dart';
 import 'firebase_options.dart';
 
 /// Run with  --dart-define=PERF_OVERLAY=true  to draw the frame graph.
@@ -10,10 +13,39 @@ const bool kPerfOverlay = bool.fromEnvironment('PERF_OVERLAY');
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode) _watchOverflows();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  // Sound is optional: never let it hold up the app.
+  try {
+    await Sound.I.init().timeout(const Duration(seconds: 3));
+  } catch (_) {}
   runApp(const HakbangHeroApp());
+}
+
+/// Debug builds only: prints ONE short line per layout overflow with the
+/// size and the source file:line of the widget, e.g.
+///   [overflow] 4.0px  Row  lib/widgets/foo.dart:123
+/// so "overflowed by 4 pixels" errors are easy to find and fix.
+void _watchOverflows() {
+  final previous = FlutterError.onError;
+  final seen = <String>{};
+  FlutterError.onError = (details) {
+    final text = details.toString();
+    if (text.contains('overflowed by')) {
+      final px = RegExp(r'overflowed by ([\d.]+) pixels')
+          .firstMatch(text)
+          ?.group(1);
+      final where = RegExp(r'(lib/[\w/]+\.dart:\d+)').firstMatch(text)?.group(1);
+      final widget = RegExp(r'error-causing widget was:\s*(\w+)')
+          .firstMatch(text)
+          ?.group(1);
+      final line = '[overflow] ${px}px  ${widget ?? '?'}  ${where ?? '?'}';
+      if (seen.add(line)) debugPrint(line);
+    }
+    (previous ?? FlutterError.presentError)(details);
+  };
 }
 
 class HakbangHeroApp extends StatelessWidget {
@@ -25,6 +57,12 @@ class HakbangHeroApp extends StatelessWidget {
       title: 'HakbangHero',
       debugShowCheckedModeBanner: false,
       showPerformanceOverlay: kPerfOverlay,
+      // Browsers only allow sound after a tap: any touch wakes the music.
+      builder: (context, child) => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => Sound.I.userGesture(),
+        child: child,
+      ),
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF060C06),
@@ -34,9 +72,44 @@ class HakbangHeroApp extends StatelessWidget {
           surface: Color(0xFF0D1A0D),
         ),
       ),
+      navigatorObservers: [_SoundNavObserver()],
       home: const _AuthGate(),
     );
   }
+}
+
+/// Plays a whoosh when a screen / dialog / sheet opens and a soft blip when it
+/// closes, so every part of the app gets sound without touching each screen.
+class _SoundNavObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) Sound.I.play(Sfx.open, volume: 0.6);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) Sound.I.play(Sfx.back, volume: 0.6);
+  }
+}
+
+/// Login / sign-up: no background music here. (Signing out lands here too, so
+/// the music stops the moment the player logs out.)
+class _SilentLogin extends StatefulWidget {
+  const _SilentLogin();
+
+  @override
+  State<_SilentLogin> createState() => _SilentLoginState();
+}
+
+class _SilentLoginState extends State<_SilentLogin> {
+  @override
+  void initState() {
+    super.initState();
+    Sound.I.music(null);
+  }
+
+  @override
+  Widget build(BuildContext context) => const LoginScreen();
 }
 
 class _AuthGate extends StatelessWidget {
@@ -48,20 +121,18 @@ class _AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Color(0xFF060C06),
-            body: Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF00FF41),
-                strokeWidth: 2,
-              ),
-            ),
+          return const StartupView(progress: 0.03, status: 'STARTING...');
+        }
+        final user = snapshot.data;
+        if (user != null) {
+          // loading screen (profile, hero art, icons, effects), then the app
+          return StartupGate(
+            key: ValueKey(user.uid),
+            uid: user.uid,
+            child: const MainShell(),
           );
         }
-        if (snapshot.hasData && snapshot.data != null) {
-          return const MainShell();
-        }
-        return const LoginScreen();
+        return const _SilentLogin();
       },
     );
   }

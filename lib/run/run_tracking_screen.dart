@@ -12,6 +12,8 @@ import 'package:hakbanghero/models/daily_quest_definitions.dart';
 import 'package:hakbanghero/models/ghost_run.dart';
 import '../models/run_mode.dart';
 import '../services/run_saver.dart';
+import '../services/sound.dart';
+import '../utils/rewards.dart';
 
 import '../challenges/challenge_audio.dart';
 import '../challenges/challenge_engine.dart';
@@ -20,6 +22,7 @@ import '../widgets/block_ui.dart';
 import '../widgets/lottie_fx.dart';
 import '../widgets/post_run_tutorial.dart';
 import '../widgets/pre_run_view.dart';
+import '../widgets/run_countdown.dart';
 import '../widgets/session_views.dart';
 import '../widgets/stage_briefing_view.dart';
 import '../widgets/warmup_view.dart';
@@ -278,7 +281,13 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   }
 
   void _skipWarmUp() {
-    _startTracking();
+    _beginCountdown();
+  }
+
+  /// Warm-up finished (or skipped): 3-2-1 first, THEN the run starts.
+  void _beginCountdown() {
+    if (_phase == _Phase.countdown || _phase == _Phase.tracking) return;
+    setState(() => _phase = _Phase.countdown);
   }
 
   // ── Permissions ────────────────────────────────────────────────────────────
@@ -289,6 +298,14 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   // GPS chip: 0 timer-only, 1 searching, 2 weak, 3 good
   int _gpsStatus = 1;
   bool? _lastIntervalFast;
+
+  /// Seconds you were actually moving (GPS saw you progress in the last 8 s).
+  int _activeSeconds = 0;
+
+  // Interval Run: km covered in each FAST block (index = round - 1)
+  final List<double> _fastKm = List<double>.filled(RunMode.intervalRounds, 0.0);
+  Map<String, dynamic>? _intervalStats;
+  bool _intervalNewBest = false;
 
   Future<bool> _requestPermission() async {
     _permIssue = null;
@@ -419,6 +436,10 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     // Stage ranks fire their own events; Novice and Endless have none.
     _challenge.setup(_mode.challengeConfig);
 
+    Sound.I.play(Sfx.go);
+    final ph0 = _mode.isInterval ? RunMode.intervalAt(0) : null;
+    Sound.I.music(ph0 != null && ph0.fast ? Bgm.sprint : Bgm.run);
+
     setState(() {
       _phase = _Phase.tracking;
 
@@ -443,6 +464,10 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       _lastMoveAt = null;
       _gpsStatus = useGps ? 1 : 0;
       _lastIntervalFast = null;
+      _activeSeconds = 0;
+      _fastKm.fillRange(0, _fastKm.length, 0.0);
+      _intervalStats = null;
+      _intervalNewBest = false;
 
       _newlyCompletedQuests = [];
       _summaryChallenges = [];
@@ -456,6 +481,10 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         if (mounted) {
           setState(() {
             _elapsedSeconds++;
+            final m = _lastMoveAt;
+            if (m != null && DateTime.now().difference(m).inSeconds < 8) {
+              _activeSeconds++;
+            }
           });
           _tickChallenge();
           _intervalCue();
@@ -521,6 +550,11 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
               _speedSamples.add(speedKmh);
 
+              if (_mode.isInterval) {
+                final ph = RunMode.intervalAt(_elapsedSeconds);
+                if (ph != null && ph.fast) _fastKm[ph.round - 1] += delta;
+              }
+
               _routePoints.add({
                 'lat': pos.latitude,
                 'lng': pos.longitude,
@@ -561,9 +595,12 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   String? get _clockLeftLabel {
     final left = _clockLeftSeconds;
     if (left == null) return null;
-    final m = left ~/ 60;
+    final h = left ~/ 3600;
+    final m = (left % 3600) ~/ 60;
     final sec = left % 60;
-    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+    final mm = m.toString().padLeft(2, '0');
+    final ss = sec.toString().padLeft(2, '0');
+    return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
   }
 
   /// Interval Run: buzz + sound whenever FAST and EASY swap.
@@ -572,8 +609,9 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     final ph = RunMode.intervalAt(_elapsedSeconds);
     if (ph == null) return;
     if (_lastIntervalFast != null && _lastIntervalFast != ph.fast) {
-      HapticFeedback.heavyImpact();
-      SystemSound.play(SystemSoundType.alert);
+      Sound.I.buzz(3);
+      Sound.I.play(ph.fast ? Sfx.fast : Sfx.easy);
+      Sound.I.music(ph.fast ? Bgm.sprint : Bgm.run);
     }
     _lastIntervalFast = ph.fast;
   }
@@ -661,12 +699,15 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     // Mode multiplier: Novice 1.0x, Vanguard 1.5x, Slayer 2.5x, Endless 0.2x.
     final mult = _mode.rewardMult;
 
-    final xp =
-        ((_distanceKm * 100 + _elapsedSeconds / 60 * 5) * mult).round() +
-            (bonusXp * mult).round();
+    // Reward = verified distance + MOVING time + pace bonus (utils/rewards.dart)
+    final xp = RunRewards.xp(
+      km: _distanceKm,
+      activeSeconds: _activeSeconds,
+      mult: mult,
+      bonusXp: bonusXp.round(),
+    );
 
-    final coins =
-        (_distanceKm * 10 * mult).round();
+    final coins = RunRewards.coins(km: _distanceKm, mult: mult);
 
     // Challenge crystals scale with the mode; the ghost prize stays fixed.
     final modeGems = (bonusGems * mult).round();
@@ -705,10 +746,34 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       _isSaving = true;
     });
 
+    // Interval Run stats: only FAST blocks that were fully played count.
+    Map<String, dynamic>? interval;
+    if (_mode.isInterval) {
+      var best = 0;
+      var fastTotal = 0.0;
+      for (var r = 0; r < RunMode.intervalRounds; r++) {
+        fastTotal += _fastKm[r];
+        final fastDone =
+            _elapsedSeconds >= r * RunMode.intervalCycle + RunMode.intervalFastSeconds;
+        if (fastDone && _fastKm[r] >= 0.03) {
+          final pace = (RunMode.intervalFastSeconds / _fastKm[r]).round();
+          if (best == 0 || pace < best) best = pace;
+        }
+      }
+      interval = {
+        'rounds': math.min(
+            RunMode.intervalRounds, _elapsedSeconds ~/ RunMode.intervalCycle),
+        'fast_km': double.parse(fastTotal.toStringAsFixed(3)),
+        if (best > 0) 'best_fast_pace_s': best,
+      };
+      _intervalStats = interval;
+    }
+
     _savedOffline = false;
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       final fields = session.toFirestore()
+        ..['activeSeconds'] = _activeSeconds
         ..['startTime'] = session.startTime.millisecondsSinceEpoch
         ..['endTime'] = session.endTime.millisecondsSinceEpoch;
       final payload = RunPayload(
@@ -726,14 +791,16 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         gems: modeGems + ghostGems,
         lootChests: lootChests,
         elapsedSeconds: _elapsedSeconds,
+        interval: interval,
       );
       try {
         final r = await RunSaver.save(payload).timeout(RunSaver.timeout);
         _newlyCompletedQuests = r.completedQuests;
-        _stageStars = r.stars;
+        _stageStars = _mode.isTrial ? 0 : r.stars;
         _stageBonusGems = r.bonusGems;
         _stageFirstClear = r.firstClear;
         _unlockedRank = r.unlockedRank;
+        _intervalNewBest = r.intervalNewBest;
         // connection is fine: also send any run that was waiting
         RunOutbox.flush(user.uid);
       } catch (e) {
@@ -742,7 +809,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         _savedOffline = true;
         await RunOutbox.enqueue(payload);
         if (_mode.isStage && _outcomeGood) {
-          _stageStars = _mode.starsFor(_elapsedSeconds);
+          _stageStars = _mode.isTrial ? 0 : _mode.starsFor(_elapsedSeconds);
         }
       }
     }
@@ -753,10 +820,27 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       });
     }
 
+    _playResultSounds();
     _showSummarySheet(session);
   }
 
   // ── SUMMARY ────────────────────────────────────────────────────────────────
+
+  /// Jingle for the finished run, then little extras for what it earned.
+  void _playResultSounds() {
+    Sound.I.music(null); // quiet the track so the jingle is heard
+    final won = _outcome == null || _outcomeGood;
+    Sound.I.play(won ? Sfx.success : Sfx.fail);
+    Future<void>.delayed(const Duration(milliseconds: 1300), () {
+      if (_unlockedRank != null) {
+        Sound.I.play(Sfx.unlock);
+      } else if (_stageStars > 0) {
+        Sound.I.play(Sfx.star);
+      } else if (_newlyCompletedQuests.isNotEmpty || _stageBonusGems > 0) {
+        Sound.I.play(Sfx.gem);
+      }
+    });
+  }
 
   void _showSummarySheet(
     ActivitySession session,
@@ -770,6 +854,8 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         session: session,
         isSaving: _isSaving,
         queued: _savedOffline,
+        intervalStats: _intervalStats,
+        intervalNewBest: _intervalNewBest,
         completedQuests:
             _newlyCompletedQuests,
         challenges: _summaryChallenges,
@@ -889,9 +975,17 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       case _Phase.warmUp:
         return WarmUpView(
           activityType: _userPick,
-          onComplete: () => _startTracking(),
+          onComplete: _beginCountdown,
           onSkip: _skipWarmUp,
           onBack: () => setState(() =>
+              _phase = _mode.isStage ? _Phase.briefing : _Phase.preRun),
+        );
+
+      case _Phase.countdown:
+        return RunCountdown(
+          modeName: _mode.name,
+          onDone: () => _startTracking(),
+          onCancel: () => setState(() =>
               _phase = _mode.isStage ? _Phase.briefing : _Phase.preRun),
         );
 
@@ -952,6 +1046,7 @@ enum _Phase {
   preRun,
   briefing,
   warmUp,
+  countdown,
   tracking,
   summary,
 }

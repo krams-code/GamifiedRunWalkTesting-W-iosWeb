@@ -50,6 +50,46 @@ class StageBriefingView extends StatelessWidget {
     return 0;
   }
 
+  String _hms(int secs) {
+    final h = secs ~/ 3600, m = (secs % 3600) ~/ 60, s = secs % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+  }
+
+  /// Distance Trial: one clear goal (distance + time) and the first-clear gift.
+  Widget _trialGoal(int stars, int? best) {
+    final clock = (mode.clockSeconds ?? 0);
+    return Block(
+      color: Rb.slate,
+      edge: Rb.slateEdge,
+      depth: 5,
+      radius: 14,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const BlockText('YOUR GOAL', size: 13, stroke: 3.5),
+          const SizedBox(height: 8),
+          BlockText(
+            'Run ${mode.targetKm!.toStringAsFixed(mode.targetKm! % 1 == 0 ? 0 : 3)} KM in under ${_hms(clock)}',
+            size: 14,
+            stroke: 3.5,
+            color: Rb.gold,
+          ),
+          const SizedBox(height: 6),
+          BlockText(
+            stars == 0
+                ? 'FIRST CLEAR BONUS: +${mode.firstClearGems} \u{1F48E}   \u2022   opens the next time goal'
+                : 'CLEARED${best == null ? '' : '   \u2022   BEST ${_hms(best)}'}',
+            size: 10.5,
+            stroke: 3,
+            color: Rb.neon,
+          ),
+        ],
+      ),
+    );
+  }
+
   String _mmss(int secs) =>
       '${(secs ~/ 60).toString().padLeft(2, '0')}:${(secs % 60).toString().padLeft(2, '0')}';
 
@@ -106,8 +146,11 @@ class StageBriefingView extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.end,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const BlockText('STAGE BRIEFING',
-                              size: 11, stroke: 3, color: Color(0xFFFFD21F)),
+                          BlockText(
+                              mode.isTrial ? 'TRIAL BRIEFING' : 'STAGE BRIEFING',
+                              size: 11,
+                              stroke: 3,
+                              color: const Color(0xFFFFD21F)),
                           const SizedBox(height: 2),
                           FittedBox(
                             fit: BoxFit.scaleDown,
@@ -117,7 +160,9 @@ class StageBriefingView extends StatelessWidget {
                           BlockText(mode.mapName.toUpperCase(), size: 13, stroke: 3.5),
                           const SizedBox(height: 4),
                           BlockText(
-                            '★' * stars + '☆' * (3 - stars),
+                            mode.isTrial
+                                ? (stars > 0 ? '\u2714 CLEARED' : 'NOT CLEARED YET')
+                                : '★' * stars + '☆' * (3 - stars),
                             size: 22,
                             stroke: 4,
                             color: stars > 0 ? const Color(0xFFFFD21F) : const Color(0xFFB8BDC4),
@@ -174,8 +219,8 @@ class StageBriefingView extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // ── star goals ──
-          Block(
+          // ── star goals (trials have one clear goal instead) ──
+          if (mode.isTrial) _trialGoal(stars, best) else Block(
             color: Rb.slate,
             edge: Rb.slateEdge,
             depth: 5,

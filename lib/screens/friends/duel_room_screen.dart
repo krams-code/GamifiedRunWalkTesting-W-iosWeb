@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart' hide ActivityType;
 
 import '../../models/activity_model.dart';
 import '../../services/friends_service.dart';
+import '../../utils/rewards.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/hero_bust.dart';
 import '../../widgets/emoji_icons.dart';
@@ -448,8 +449,9 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
       try {
         final uid = _me;
         final avg = _km / (_secs / 3600.0);
-        final xp = (_km * 100 + _secs / 60 * 5).toInt();
-        final coins = (_km * 10).toInt();
+        // a duel is a race: you are moving the whole time
+        final xp = RunRewards.xp(km: _km, activeSeconds: _secs, mult: 1.0);
+        final coins = RunRewards.coins(km: _km, mult: 1.0);
         final start = _raceStart ?? DateTime.now().subtract(Duration(seconds: _secs));
         final session = ActivitySession(
           id: '',
@@ -467,17 +469,25 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
         );
         final db = FirebaseFirestore.instance;
         final userRef = FriendsService.user(uid);
-        await userRef.collection('activities').add({
-          ...session.toFirestore(),
-          'duel_id': widget.challengeId,
-        });
+        // Activity + rewards in ONE transaction with a fixed id: it can't be
+        // saved twice, and the security rules can check the reward against
+        // this run record.
+        final runId = 'duel_${widget.challengeId}';
+        final actRef = userRef.collection('activities').doc(runId);
         await db.runTransaction((txn) async {
+          final done = await txn.get(actRef);
+          if (done.exists) return;
           final snap = await txn.get(userRef);
+          txn.set(actRef, {
+            ...session.toFirestore(),
+            'duel_id': widget.challengeId,
+          });
           txn.update(userRef, {
             'total_km': FieldValue.increment(session.distanceKm),
             'total_sessions': FieldValue.increment(1),
             'xp': FieldValue.increment(xp),
             'coins': FieldValue.increment(coins),
+            'last_run_id': runId,
             ...FriendsService.weekFields(snap.data() ?? {}, session.distanceKm),
           });
         });

@@ -9,6 +9,7 @@ import '../../models/hero_progress.dart';
 import '../../models/hero_roster.dart';
 import '../../state/evolution_state.dart';
 import '../../widgets/block_ui.dart';
+import '../../widgets/unlock_sheet.dart';
 import '../../widgets/hero_rig.dart';
 import '../../state/user_doc.dart';
 import '../../widgets/lottie_fx.dart';
@@ -240,12 +241,34 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         child: BlockText(label, size: 11, stroke: 3),
       );
 
+  void _showHow(HeroDef h, HeroProgress prog, BodyTier tier) {
+    final price = h.gemPrice > 0 ? '${h.gemPrice} \u{1F48E}' : null;
+    final goalsDone = h.rule.met(prog);
+    showUnlockSheet(
+      context,
+      title: h.name,
+      kind: '${h.rarityLabel} HERO',
+      art: HeroStill(heroId: h.id, tier: tier),
+      reqs: unlockReqs(h.rule, prog),
+      priceLabel: price,
+      youHave: price == null ? null : 'You have ${prog.gems} \u{1F48E}',
+      tip: unlockTip(h.rule, prog) ??
+          (price != null && prog.gems < h.gemPrice
+              ? 'Crystals come from daily quests, first rank clears and stars.'
+              : null),
+      canBuy: !widget.firstTime && goalsDone && prog.gems >= h.gemPrice && h.gemPrice > 0,
+      onBuy: () => _buy(h),
+      accent: h.color,
+      accentEdge: h.edge,
+    );
+  }
+
   Widget _heroCard(HeroDef h, HeroProgress prog, String? chosen,
       HeroOutfit outfit, BodyTier tier) {
     final open = isHeroUnlocked(h, prog);
     final selected = chosen == h.id;
     final hint = heroLockHint(h, prog);
-    final canBuy = !open && h.gemPrice > 0 && !widget.firstTime;
+    final canBuy = !open && heroCanBuy(h, prog) && !widget.firstTime;
     final affordable = prog.gems >= h.gemPrice;
 
     final figure = SizedBox(
@@ -299,7 +322,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: BlockText('\u{1F512} ${hint ?? 'Locked'}', size: 11, stroke: 3),
       );
-      onTap = null;
+      onTap = () => _showHow(h, prog, tier); // tap: how to unlock it
     }
 
     return PressBlock(

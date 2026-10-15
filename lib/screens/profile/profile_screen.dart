@@ -13,6 +13,7 @@ import '../../widgets/block_inputs.dart' show blockSnack;
 import '../../widgets/block_ui.dart';
 import '../../widgets/evolution_checkin_dialog.dart';
 import '../../widgets/global_top_bar.dart' show confirmLogout;
+import '../../widgets/settings_sheet.dart';
 import '../character/character_creation_screen.dart';
 import '../character/hero_picker_screen.dart';
 import '../../widgets/emoji_icons.dart';
@@ -197,6 +198,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 alignment: Alignment.centerLeft,
                 child: BlockText('👤 PLAYER PROFILE', size: 20, stroke: 4.5),
               ),
+            ),
+            const SizedBox(width: 10),
+            PressBlock(
+              color: const Color(0xFFE2E2E2),
+              edge: const Color(0xFF6B6B6B),
+              depth: 4,
+              radius: 12,
+              silent: true, // the sheet opening plays the sound
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              onTap: () => showSettingsSheet(context),
+              child: const EmojiText('⚙',
+                  style: TextStyle(
+                      color: Color(0xFF232527),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900)),
             ),
           ],
         ),

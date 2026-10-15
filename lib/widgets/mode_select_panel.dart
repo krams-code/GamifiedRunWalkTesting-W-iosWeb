@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/run_mode.dart';
 import 'block_ui.dart';
+import 'unlock_sheet.dart';
 import 'emoji_icons.dart';
 import 'lottie_fx.dart';
 
@@ -58,6 +59,7 @@ class _ModePanel extends StatefulWidget {
 
 class _ModePanelState extends State<_ModePanel> {
   late bool _pickingRank = widget.firstRun; // false = main menu, true = ranks
+  bool _pickingTrial = false; // Distance Trials list
 
   void _close() {
     if (widget.firstRun) return; // the first mode can't be skipped
@@ -139,7 +141,9 @@ class _ModePanelState extends State<_ModePanel> {
                         duration: const Duration(milliseconds: 200),
                         child: _pickingRank
                             ? KeyedSubtree(key: const ValueKey('ranks'), child: _ranks())
-                            : KeyedSubtree(key: const ValueKey('menu'), child: _menu()),
+                            : _pickingTrial
+                                ? KeyedSubtree(key: const ValueKey('trials'), child: _trials())
+                                : KeyedSubtree(key: const ValueKey('menu'), child: _menu()),
                       ),
                     ),
                   ),
@@ -157,14 +161,17 @@ class _ModePanelState extends State<_ModePanel> {
   Widget _header() {
     return Row(
       children: [
-        if (_pickingRank && !widget.firstRun) ...[
+        if ((_pickingRank || _pickingTrial) && !widget.firstRun) ...[
           PressBlock(
             color: Rb.hud,
             edge: Rb.hudEdge,
             depth: 4,
             radius: 12,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            onTap: () => setState(() => _pickingRank = false),
+            onTap: () => setState(() {
+              _pickingRank = false;
+              _pickingTrial = false;
+            }),
             child: const EmojiText('◀',
                 style: TextStyle(
                     color: Color(0xFF232527), fontSize: 16, fontWeight: FontWeight.w900)),
@@ -178,7 +185,11 @@ class _ModePanelState extends State<_ModePanel> {
             child: BlockText(
                 widget.firstRun
                     ? 'CHOOSE YOUR FIRST MODE'
-                    : (_pickingRank ? 'CHOOSE YOUR RANK' : 'SELECT MODE'),
+                    : (_pickingRank
+                        ? 'CHOOSE YOUR RANK'
+                        : _pickingTrial
+                            ? 'DISTANCE TRIALS'
+                            : 'SELECT MODE'),
                 size: 21,
                 stroke: 5),
           ),
@@ -314,7 +325,7 @@ class _ModePanelState extends State<_ModePanel> {
           burst: _isNew(kEndless),
           onTap: RunMode.isUnlocked(kEndless, widget.records)
               ? () => _pick(kEndless)
-              : null,
+              : () => showModeLockedSheet(context, kEndless, widget.records),
           child: Column(
             children: [
               FittedBox(
@@ -353,7 +364,7 @@ class _ModePanelState extends State<_ModePanel> {
           burst: _isNew(kInterval),
           onTap: RunMode.isUnlocked(kInterval, widget.records)
               ? () => _pick(kInterval)
-              : null,
+              : () => showModeLockedSheet(context, kInterval, widget.records),
           child: Column(
             children: [
               FittedBox(
@@ -382,7 +393,164 @@ class _ModePanelState extends State<_ModePanel> {
             ],
           ),
         ),
+        const SizedBox(height: 14),
+        _pictureCard(
+          asset: 'assets/images/maps/open_road.jpg',
+          color: const Color(0xFF3B7DD8),
+          edge: const Color(0xFF1B3F73),
+          locked: !RunMode.isUnlocked(kTrialModes.first, widget.records),
+          badge: _isNew(kTrialModes.first) ? _newBadge() : null,
+          burst: _isNew(kTrialModes.first),
+          onTap: RunMode.isUnlocked(kTrialModes.first, widget.records)
+              ? () {
+                  if (_isNew(kTrialModes.first)) _markSeen(kTrialModes.first);
+                  setState(() => _pickingTrial = true);
+                }
+              : () => showModeLockedSheet(context, kTrialModes.first, widget.records),
+          child: Column(
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: BlockText(
+                    '${RunMode.isUnlocked(kTrialModes.first, widget.records) ? '\u{1F3C1}' : '\u{1F512}'} DISTANCE TRIALS',
+                    size: 24,
+                    stroke: 5.5),
+              ),
+              if (!RunMode.isUnlocked(kTrialModes.first, widget.records))
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: BlockText('${kTrialModes.first.lockHint}',
+                      size: 12.5, stroke: 3.5, color: const Color(0xFFFFE066)),
+                ),
+              const SizedBox(height: 4),
+              const BlockText('BEAT THE CLOCK, STEP BY STEP',
+                  size: 11, stroke: 3, color: Color(0xFFCFE3FF)),
+              const SizedBox(height: 8),
+              _chips([
+                '2 KM \u2022 5 KM \u2022 10 KM',
+                'MARATHON',
+                '3 time goals each',
+                '${_trialsCleared()}/${kTrialModes.length} cleared',
+              ]),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  int _trialsCleared() =>
+      kTrialModes.where((m) => RunMode.starsIn(widget.records, m.id) > 0).length;
+
+  String _best(RunMode m) {
+    final r = widget.records?[m.id];
+    final secs = r is Map ? (r['best_secs'] as num?)?.toInt() : null;
+    if (secs == null || secs <= 0) return '';
+    final h = secs ~/ 3600, mm = (secs % 3600) ~/ 60, ss = secs % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(mm)}:${two(ss)}' : '${two(mm)}:${two(ss)}';
+  }
+
+  // ── distance trials list ──────────────────────────────────────────────
+
+  Widget _trials() {
+    final groups = kTrialGroups;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const BlockText(
+          'Clear a time goal to open the next one. Finish all 3 to open the next distance!',
+          size: 11,
+          stroke: 3,
+          align: TextAlign.center,
+          color: Color(0xFFD7DADD),
+        ),
+        const SizedBox(height: 10),
+        for (final g in groups) ...[
+          _trialGroup(g),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+
+  Widget _trialGroup(List<RunMode> g) {
+    final first = g.first;
+    final open = RunMode.isUnlocked(first, widget.records);
+    return _pictureCard(
+      asset: first.mapAsset,
+      color: first.color,
+      edge: first.edge,
+      depth: 8,
+      locked: !open,
+      // locked group: tap for how to unlock; open group: the time buttons inside are the tap targets
+      onTap: open ? null : () => showModeLockedSheet(context, first, widget.records),
+      child: Column(
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: BlockText(
+                '${open ? '\u{1F3C1}' : '\u{1F512}'} ${trialGroupLabel(first)}',
+                size: 22,
+                stroke: 5),
+          ),
+          BlockText(first.mapName.toUpperCase(),
+              size: 10.5, stroke: 3, color: const Color(0xFFD7DADD)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (var i = 0; i < g.length; i++) ...[
+                Expanded(child: _timeChip(g[i])),
+                if (i != g.length - 1) const SizedBox(width: 6),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _timeChip(RunMode m) {
+    final done = RunMode.starsIn(widget.records, m.id) > 0;
+    final unlocked = RunMode.isUnlocked(m, widget.records);
+    final best = _best(m);
+    return PressBlock(
+      color: done
+          ? const Color(0xFF1E6B45)
+          : unlocked
+              ? Rb.gold
+              : const Color(0xFF4A4F57),
+      edge: done
+          ? const Color(0xFF0B2E1D)
+          : unlocked
+              ? Rb.goldEdge
+              : const Color(0xFF1B1D20),
+      depth: 4,
+      radius: 10,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      onTap: unlocked ? () => _pick(m) : () => showModeLockedSheet(context, m, widget.records),
+      child: Column(
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: BlockText(
+                '${done ? '\u2714 ' : (unlocked ? '' : '\u{1F512} ')}${trialTimeLabel(m)}',
+                size: 13,
+                stroke: 3.5,
+                color: unlocked || done ? Colors.white : const Color(0xFFB8BDC4)),
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: BlockText(
+                done && best.isNotEmpty ? 'BEST $best' : '${m.multLabel} rewards',
+                size: 9,
+                stroke: 2.5,
+                color: const Color(0xFFE8EAEC)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -468,7 +636,7 @@ class _ModePanelState extends State<_ModePanel> {
       locked: locked,
       badge: (widget.firstRun && !locked) ? _startHereBadge() : null,
       burst: _isNew(m),
-      onTap: locked ? null : () => _pick(m),
+      onTap: locked ? () => showModeLockedSheet(context, m, widget.records) : () => _pick(m),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -278,8 +278,10 @@ class FriendsService {
         'finished_at': FieldValue.serverTimestamp(),
         'progress.$me': double.parse(km.toStringAsFixed(3)),
       });
-      txn.update(user(me),
-          {'gems': FieldValue.increment((d['reward'] as num).toInt())});
+      txn.update(user(me), {
+        'gems': FieldValue.increment((d['reward'] as num).toInt()),
+        'last_duel_id': id, // rules check the prize against this challenge
+      });
       won = true;
     });
     return won;
@@ -313,8 +315,10 @@ class FriendsService {
         'finished_at': FieldValue.serverTimestamp(),
         'by_default': true,
       });
-      txn.update(user(me),
-          {'gems': FieldValue.increment((d['reward'] as num).toInt())});
+      txn.update(user(me), {
+        'gems': FieldValue.increment((d['reward'] as num).toInt()),
+        'last_duel_id': id,
+      });
       won = true;
     });
     return won;

@@ -40,6 +40,10 @@ class RunMode {
   /// Rank that must be cleared (>= 1 star) before this one opens. Null = open.
   final String? requiresId;
 
+  /// Distance Trial: a fixed distance against a fixed time goal. Runs like a
+  /// stage (target + clock + record) but is NOT one of the 3 campaign ranks.
+  final bool isTrial;
+
   const RunMode({
     required this.id,
     required this.loop,
@@ -55,6 +59,7 @@ class RunMode {
     required this.mapAsset,
     this.firstClearGems = 0,
     this.requiresId,
+    this.isTrial = false,
   });
 
   /// Every star you can collect across the three ranks.
@@ -104,16 +109,24 @@ class RunMode {
   int starsFor(int secondsUsed) {
     final total = clockSeconds;
     if (total == null || total <= 0) return 0;
+    if (isTrial) return 1; // a trial is simply cleared or not
     final used = secondsUsed / total;
-    if (used <= 0.5) return 3;
-    if (used <= 2 / 3) return 2;
+    if (used <= starThree) return 3;
+    if (used <= starTwo) return 2;
     return 1;
   }
+
+  /// Share of the clock you may use for 3 / 2 stars. Realistic for a normal
+  /// runner: Novice 2 km in 20 min -> 3 stars at 12:00 (10 km/h), 2 stars at
+  /// 16:00 (7.5 km/h), 1 star by the clock (6 km/h brisk walk).
+  static const double starThree = 0.6;
+  static const double starTwo = 0.8;
 
   /// "Under 15:00" style goal for the 3-star / 2-star rows on the briefing.
   String starGoalLabel(int stars) {
     final total = clockSeconds ?? 0;
-    final secs = stars == 3 ? (total * 0.5).round() : (total * 2 / 3).round();
+    final secs =
+        (total * (stars == 3 ? starThree : starTwo)).round();
     final m = secs ~/ 60, s = secs % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
@@ -188,7 +201,7 @@ class RunMode {
           sprintMaxPerRun: 0,
           paceTriggerKm: 1.0,
           paceSectionKm: 1.0,
-          paceSeconds: 300,
+          paceSeconds: 360, // 6:00 per km = 10 km/h
           paceMaxPerRun: 2,
           paceRepeatGapKm: 1.0,
         );
@@ -226,6 +239,9 @@ class RunMode {
     for (final m in kRunModes) {
       if (m.id == id) return m;
     }
+    for (final m in kTrialModes) {
+      if (m.id == id) return m;
+    }
     return null;
   }
 }
@@ -236,8 +252,8 @@ const RunMode kNovice = RunMode(
   emoji: '\u{1F7E2}',
   name: 'NOVICE RANK',
   mapName: 'The Verdant Vale',
-  targetKm: 1.5,
-  clockMinutes: 30,
+  targetKm: 2.0,
+  clockMinutes: 20,
   rewardMult: 1.0,
   events: EventPlan.none,
   color: Color(0xFF00B06F),
@@ -253,7 +269,7 @@ const RunMode kVanguard = RunMode(
   name: 'VANGUARD RANK',
   mapName: 'The Ember Plains',
   targetKm: 3.5,
-  clockMinutes: 45,
+  clockMinutes: 30,
   rewardMult: 1.5,
   events: EventPlan.oneSprintQuest,
   color: Color(0xFFD98E00),
@@ -270,7 +286,7 @@ const RunMode kSlayer = RunMode(
   name: 'SLAYER RANK',
   mapName: 'The Abyss Citadel',
   targetKm: 5.0,
-  clockMinutes: 60,
+  clockMinutes: 40,
   rewardMult: 2.5,
   events: EventPlan.paceTrials,
   color: Color(0xFFE5484D),
@@ -314,6 +330,97 @@ const RunMode kInterval = RunMode(
   // like Endless, it opens with the first clear of NOVICE RANK
   requiresId: 'stage_novice',
 );
+
+// ═════════════════════════════════════════════════════════════════════════
+// DISTANCE TRIALS: 2 km, 5 km, 10 km, Marathon. Each distance has 3 time
+// goals that open one after another (clear 15:00 to open 12:00, then 10:00).
+// Clearing a distance's last time opens the next distance.
+// ═════════════════════════════════════════════════════════════════════════
+
+class _TrialSpec {
+  final String key; // '2k'
+  final String label; // '2 KM'
+  final double km;
+  final List<int> minutes; // easiest first
+  final double baseMult;
+  final List<int> gems; // first-clear crystals per time goal
+  final String mapName;
+  final String mapAsset;
+  final Color color;
+  final Color edge;
+  const _TrialSpec(this.key, this.label, this.km, this.minutes, this.baseMult,
+      this.gems, this.mapName, this.mapAsset, this.color, this.edge);
+}
+
+const List<_TrialSpec> _kTrialSpecs = [
+  _TrialSpec('2k', '2 KM', 2.0, [15, 12, 10], 1.2, [10, 15, 20],
+      'The Sprint Lane', 'assets/images/maps/verdant_vale.jpg',
+      Color(0xFF1FA2A6), Color(0xFF0B5D60)),
+  _TrialSpec('5k', '5 KM', 5.0, [40, 32, 27], 1.6, [20, 30, 40],
+      'The Tempo Trail', 'assets/images/maps/ember_plains.jpg',
+      Color(0xFF3B7DD8), Color(0xFF1B3F73)),
+  _TrialSpec('10k', '10 KM', 10.0, [80, 65, 55], 2.0, [40, 60, 80],
+      'The Endurance Ridge', 'assets/images/maps/abyss_citadel.jpg',
+      Color(0xFF8A4FD8), Color(0xFF45247A)),
+  _TrialSpec('42k', 'MARATHON', 42.195, [390, 330, 270], 2.8, [100, 150, 250],
+      'The Marathon Road', 'assets/images/maps/open_road.jpg',
+      Color(0xFFC2332E), Color(0xFF6A1714)),
+];
+
+/// "15 MIN" / "1 H 20 MIN" / "6 H 30 MIN"
+String _minLabel(int m) {
+  if (m < 60) return '$m MIN';
+  final h = m ~/ 60, r = m % 60;
+  return r == 0 ? '$h H' : '$h H $r MIN';
+}
+
+List<RunMode> _buildTrials() {
+  final out = <RunMode>[];
+  String prev = kNovice.id;
+  for (final sp in _kTrialSpecs) {
+    for (var i = 0; i < sp.minutes.length; i++) {
+      final id = 'trial_${sp.key}_${sp.minutes[i]}';
+      out.add(RunMode(
+        id: id,
+        loop: RunLoop.stage,
+        isTrial: true,
+        emoji: '\u{1F3C1}',
+        name: '${sp.label} IN ${_minLabel(sp.minutes[i])}',
+        mapName: sp.mapName,
+        targetKm: sp.km,
+        clockMinutes: sp.minutes[i],
+        rewardMult: double.parse((sp.baseMult + 0.1 * i).toStringAsFixed(1)),
+        events: EventPlan.none,
+        color: sp.color,
+        edge: sp.edge,
+        mapAsset: sp.mapAsset,
+        firstClearGems: sp.gems[i],
+        requiresId: prev,
+      ));
+      prev = id;
+    }
+  }
+  return out;
+}
+
+/// All 12 trials in unlock order.
+final List<RunMode> kTrialModes = _buildTrials();
+
+/// Trials of one distance, e.g. 'DISTANCE' groups for the picker.
+List<List<RunMode>> get kTrialGroups => [
+      for (final sp in _kTrialSpecs)
+        [for (final m in kTrialModes) if (m.targetKm == sp.km) m],
+    ];
+
+String trialGroupLabel(RunMode m) {
+  for (final sp in _kTrialSpecs) {
+    if (sp.km == m.targetKm) return sp.label;
+  }
+  return m.name;
+}
+
+/// Short time-goal label for a trial: "15 MIN".
+String trialTimeLabel(RunMode m) => _minLabel(m.clockMinutes ?? 0);
 
 const List<RunMode> kStageModes = [kNovice, kVanguard, kSlayer];
 const List<RunMode> kRunModes = [kNovice, kVanguard, kSlayer, kEndless, kInterval];

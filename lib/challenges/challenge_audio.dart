@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'challenge_engine.dart';
+import '../services/sound.dart';
 
 /// Sound + haptics for the sudden challenges.
 ///
@@ -27,18 +28,19 @@ class ChallengeAudio {
   Future<void> onEvent(ChallengeEvent e) {
     switch (e.type) {
       case ChallengeEventType.started:
-        HapticFeedback.heavyImpact();
+        Sound.I.buzz(3);
         return _play(alarmAsset, alert: true);
       case ChallengeEventType.succeeded:
-        HapticFeedback.mediumImpact();
+        Sound.I.buzz(2);
         return _play(successAsset);
       case ChallengeEventType.failed:
-        HapticFeedback.lightImpact();
+        Sound.I.buzz(1);
         return _play(failAsset);
     }
   }
 
   Future<void> _play(String asset, {bool alert = false}) async {
+    if (!Sound.I.sfxOn.value) return;
     try {
       final p = _player ??= AudioPlayer();
       await p.stop();
@@ -49,7 +51,7 @@ class ChallengeAudio {
       if (alert) {
         try {
           await SystemSound.play(SystemSoundType.alert);
-          await HapticFeedback.vibrate();
+          Sound.I.buzz(3);
         } catch (_) {}
       }
     }

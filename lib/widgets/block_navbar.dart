@@ -142,12 +142,10 @@ class BlockNavBar extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const PixelIconAnim(
-                        AppIcons.runFrames,
-                        size: 44,
-                        intervalMs: 260,
-                      ),
-                      const SizedBox(height: 1),
+                      // two-frame pixel runner (pauses by itself when hidden)
+                      const PixelIconAnim(AppIcons.runFrames,
+                          size: 44, intervalMs: 260),
+                      const SizedBox(height: 2),
                       BlockText(
                         'RUN',
                         size: 14,

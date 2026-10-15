@@ -1,3 +1,4 @@
+import '../services/sound.dart';
 import 'package:flutter/material.dart';
 
 import 'emoji_icons.dart';
@@ -191,6 +192,10 @@ class PressBlock extends StatefulWidget {
   final VoidCallback? onTap;
   final Widget child;
 
+  /// Sound played on tap. Use [silent] when the screen plays its own sound.
+  final Sfx sfx;
+  final bool silent;
+
   const PressBlock({
     super.key,
     required this.color,
@@ -201,6 +206,8 @@ class PressBlock extends StatefulWidget {
     this.depth = 6,
     this.forcePressed = false,
     this.padding = const EdgeInsets.all(12),
+    this.sfx = Sfx.click,
+    this.silent = false,
   });
 
   @override
@@ -221,6 +228,8 @@ class _PressBlockState extends State<PressBlock> {
           ? null
           : (_) {
               setState(() => _down = false);
+              Sound.I.userGesture();
+              if (!widget.silent) Sound.I.play(widget.sfx);
               widget.onTap!();
             },
       onTapCancel: () => setState(() => _down = false),

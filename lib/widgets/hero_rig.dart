@@ -139,6 +139,21 @@ class _HeroRigState extends State<HeroRig> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final h = widget.height;
     final w = h * kHeroW / kHeroH;
+    if (heroIsCostume(widget.heroId)) {
+      return SizedBox(
+        width: w,
+        height: h,
+        child: _CostumeBody(
+          anim: _c,
+          heroId: widget.heroId,
+          tier: widget.tier,
+          pose: widget.pose,
+          w: w,
+          h: h,
+          shadow: widget.shadow,
+        ),
+      );
+    }
     return SizedBox(
       width: w,
       height: h,
@@ -152,6 +167,86 @@ class _HeroRigState extends State<HeroRig> with SingleTickerProviderStateMixin {
         shadow: widget.shadow,
         outfit: widget.outfit,
       ),
+    );
+  }
+}
+
+/// A costume hero is ONE picture, so it moves like a cartoon: it hops on every
+/// step, waddles side to side and squashes a little when it lands.
+class _CostumeBody extends StatelessWidget {
+  final Animation<double> anim;
+  final String heroId;
+  final BodyTier tier;
+  final RigPose pose;
+  final double w, h;
+  final bool shadow;
+
+  const _CostumeBody({
+    required this.anim,
+    required this.heroId,
+    required this.tier,
+    required this.pose,
+    required this.w,
+    required this.h,
+    required this.shadow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final m = _kMoves[pose]!;
+    final img = Image.asset(
+      heroLayerAsset(heroId, tier, 'full'),
+      width: w,
+      height: h,
+      fit: BoxFit.fill,
+      filterQuality: FilterQuality.medium,
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+    return AnimatedBuilder(
+      animation: anim,
+      builder: (_, child) {
+        final t = anim.value * 2 * math.pi;
+        final s = math.sin(t);
+        final moving = pose != RigPose.idle;
+        final hop = moving ? -s.abs() * m.bob * 2.4 * h : 0.0;
+        final tilt = moving ? m.sway * 2.2 * s : 0.02 * s;
+        final sy = moving ? 1 + 0.045 * math.cos(2 * t) : 1 + 0.015 * s;
+        final sx = 1 - (sy - 1) * 0.7;
+        final lift = hop.abs() / h;
+        return Stack(
+          fit: StackFit.expand,
+          clipBehavior: Clip.none,
+          children: [
+            if (shadow)
+              Positioned(
+                left: w * (0.22 + lift),
+                width: w * (0.56 - 2 * lift),
+                top: h * 0.935,
+                height: h * 0.045,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(h),
+                  ),
+                ),
+              ),
+            Positioned.fill(
+              child: Transform.translate(
+                offset: Offset(0, hop),
+                child: Transform(
+                  alignment: Alignment.bottomCenter,
+                  transform: Matrix4.identity()
+                    ..rotateZ(tilt)
+                    ..scale(sx, sy),
+                  child: child,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      child: img,
     );
   }
 }
@@ -324,6 +419,19 @@ class HeroStill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget svg(String s) => SvgPicture.string(s, fit: BoxFit.fill);
+    if (heroIsCostume(heroId)) {
+      // costume heroes wear their own outfit: no gear layers
+      return AspectRatio(
+        aspectRatio: kHeroW / kHeroH,
+        child: Image.asset(
+          heroLayerAsset(heroId, tier, 'full'),
+          fit: BoxFit.fill,
+          filterQuality: filterQuality,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        ),
+      );
+    }
     return AspectRatio(
       aspectRatio: kHeroW / kHeroH,
       child: Stack(
@@ -354,6 +462,10 @@ class HeroStill extends StatelessWidget {
 
 /// Decode a hero's pictures ahead of time so the first frame never pops in.
 Future<void> precacheHero(BuildContext context, String heroId, BodyTier tier) async {
+  if (heroIsCostume(heroId)) {
+    await precacheImage(AssetImage(heroLayerAsset(heroId, tier, 'full')), context);
+    return;
+  }
   for (final l in const ['full', 'leg_back', 'leg_front', 'arm_back', 'body', 'arm_front', 'head']) {
     await precacheImage(AssetImage(heroLayerAsset(heroId, tier, l)), context);
   }

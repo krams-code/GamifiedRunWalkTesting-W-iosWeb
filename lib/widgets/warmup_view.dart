@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../constants/app_icons.dart';
 import '../models/activity_model.dart' show ActivityType;
 import '../models/warmup_exercise.dart';
+import '../services/sound.dart';
 import 'block_ui.dart';
 import 'demo_window.dart';
 import 'pixel_icon.dart';
@@ -119,6 +120,7 @@ class _WarmUpViewState extends State<WarmUpView>
       _counting = true;
       _count = widget.getReadySeconds;
     });
+    Sound.I.play(Sfx.beep);
     _countTimer?.cancel();
     _countTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted || !_counting) {
@@ -126,8 +128,10 @@ class _WarmUpViewState extends State<WarmUpView>
         return;
       }
       setState(() => _count--);
+      if (_count > 0) Sound.I.play(Sfx.beep);
       if (_count <= 0) {
         t.cancel();
+        Sound.I.play(Sfx.next);
         // let "GO!" show for a beat, then the first exercise starts
         _goTimer = Timer(const Duration(milliseconds: 800), _beginSteps);
       }
@@ -161,6 +165,7 @@ class _WarmUpViewState extends State<WarmUpView>
   /// one). After the last exercise the routine ends and the run begins.
   void _nextExercise() {
     if (_index < _routine.length - 1) {
+      Sound.I.play(Sfx.next);
       setState(() => _index++); // slides the text out/in, bar resets
       _stepCtrl.forward(from: 0);
     } else {

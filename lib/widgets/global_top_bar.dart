@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/auth/login_screen.dart';
 import '../utils/player_stats.dart';
+import '../services/sound.dart';
 import 'avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
 import 'avatar_preview.dart';
 import 'block_ui.dart';
@@ -198,6 +199,32 @@ Future<void> confirmLogout(BuildContext context) async {
   );
 }
 
+/// ON / OFF block for the SOUND and MUSIC settings.
+Widget _soundSwitch(
+    String label, ValueNotifier<bool> state, Future<void> Function(bool) set) {
+  return ValueListenableBuilder<bool>(
+    valueListenable: state,
+    builder: (_, on, __) => PressBlock(
+      color: on ? Rb.green : Rb.panel,
+      edge: on ? Rb.greenEdge : Rb.panelEdge,
+      depth: 5,
+      radius: 12,
+      silent: true,
+      padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+      onTap: () => set(!on),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          FittedBox(
+              fit: BoxFit.scaleDown,
+              child: BlockText(label, size: 12, stroke: 3)),
+          BlockText(on ? 'ON' : 'OFF', size: 14, stroke: 3.5),
+        ]),
+      ),
+    ),
+  );
+}
+
 class _PlayerSheet extends StatelessWidget {
   final Map<String, dynamic> data;
   final VoidCallback onOpenProfile;
@@ -266,6 +293,12 @@ class _PlayerSheet extends StatelessWidget {
                 Row(children: [
                   stat('🎯', '$sessions', 'SESSIONS', Rb.orange, Rb.orangeEdge),
                   stat('💎', '$gems', 'CRYSTALS', const Color(0xFF2EC4FF), const Color(0xFF0A6C99)),
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: _soundSwitch('🔊 SOUND', Sound.I.sfxOn, Sound.I.setSfx)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _soundSwitch('🎵 MUSIC', Sound.I.musicOn, Sound.I.setMusic)),
                 ]),
                 const SizedBox(height: 14),
                 PressBlock(
