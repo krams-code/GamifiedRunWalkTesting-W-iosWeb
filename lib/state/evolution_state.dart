@@ -143,8 +143,34 @@ class EvolutionState {
   static bool isCheckInDue(Map<String, dynamic>? d,
       {Duration every = checkInEvery}) {
     final ts = d?['last_checkin_at'];
-    if (ts is! Timestamp) return true;
+    if (ts is! Timestamp) {
+      // Older accounts that never checked in are due now. A brand-new hero
+      // (no weight saved yet) is not: the creation screen counts as the first.
+      return d?['weight_kg'] != null;
+    }
     return DateTime.now().difference(ts.toDate()) >= every;
+  }
+
+  /// When the next check-in opens (null = it is open now).
+  static DateTime? nextCheckInAt(Map<String, dynamic>? d,
+      {Duration every = checkInEvery}) {
+    if (isCheckInDue(d, every: every)) return null;
+    final ts = d?['last_checkin_at'];
+    return ts is Timestamp ? ts.toDate().add(every) : null;
+  }
+
+  /// "3 days", "5 hours" ... until the next check-in (empty when open).
+  static String timeLeftLabel(Map<String, dynamic>? d) {
+    final at = nextCheckInAt(d);
+    if (at == null) return '';
+    final left = at.difference(DateTime.now());
+    if (left.inHours >= 24) {
+      final days = (left.inHours / 24).ceil();
+      return '$days day${days == 1 ? '' : 's'}';
+    }
+    if (left.inHours >= 1) return '${left.inHours} hour${left.inHours == 1 ? '' : 's'}';
+    final m = left.inMinutes < 1 ? 1 : left.inMinutes;
+    return '$m min';
   }
 
   /// Would moving from the current form to [after] pay the Endurance bonus?
@@ -169,6 +195,8 @@ class EvolutionState {
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Not signed in');
+    // one check-in a week: weight and height cannot be changed any other time
+    if (!isCheckInDue(_data)) throw StateError('Check-in is not open yet');
 
     final before = composition.value;
     final bmi = calculateBmi(weightKg, heightCm);

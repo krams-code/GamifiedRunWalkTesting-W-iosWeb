@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../screens/auth/login_screen.dart';
 import '../utils/player_stats.dart';
 import '../services/sound.dart';
+import '../services/presence.dart';
 import 'avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
 import 'avatar_preview.dart';
 import 'block_ui.dart';
@@ -190,6 +191,7 @@ Future<void> confirmLogout(BuildContext context) async {
   );
   if (ok != true) return;
 
+  await Presence.I.stop(); // friends see you go offline right away
   await FirebaseAuth.instance.signOut();
   // MainShell may have been pushed with pushAndRemoveUntil (after sign-up /
   // character creation), so the auth gate isn't guaranteed to be underneath.

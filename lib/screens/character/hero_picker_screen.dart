@@ -241,7 +241,40 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         child: BlockText(label, size: 11, stroke: 3),
       );
 
-  void _showHow(HeroDef h, HeroProgress prog, BodyTier tier) {
+  /// Switching hero asks first ("are you sure?"). The very first pick is free.
+  void _confirmChoose(HeroDef h, String? chosen, BodyTier tier) {
+    final old = heroById(chosen);
+    if (widget.firstTime || old == null || old.id == h.id) {
+      _choose(h);
+      return;
+    }
+    showConfirmSheet(
+      context,
+      title: 'CHANGE HERO?',
+      message: 'Switch from ${old.name} to ${h.name}? '
+          '${h.costume && !old.costume ? '${h.name} wears its own outfit, so your shop gear stays saved for SPROUT. ' : ''}'
+          'You can switch back any time.',
+      art: HeroStill(heroId: h.id, tier: tier),
+      confirmLabel: 'YES, CHANGE',
+      onConfirm: () => _choose(h),
+    );
+  }
+
+  /// Buying also makes it your hero, so it gets the same question.
+  void _confirmBuy(HeroDef h, String? chosen, BodyTier tier) {
+    final old = heroById(chosen);
+    showConfirmSheet(
+      context,
+      title: 'BUY ${h.name}?',
+      message: 'Spend ${h.gemPrice} \u{1F48E} and switch your hero '
+          '${old == null ? '' : 'from ${old.name} '}to ${h.name}?',
+      art: HeroStill(heroId: h.id, tier: tier),
+      confirmLabel: 'YES, BUY',
+      onConfirm: () => _buy(h),
+    );
+  }
+
+  void _showHow(HeroDef h, HeroProgress prog, BodyTier tier, [String? chosen]) {
     final price = h.gemPrice > 0 ? '${h.gemPrice} \u{1F48E}' : null;
     final goalsDone = h.rule.met(prog);
     showUnlockSheet(
@@ -249,7 +282,14 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
       title: h.name,
       kind: '${h.rarityLabel} HERO',
       art: HeroStill(heroId: h.id, tier: tier),
-      reqs: unlockReqs(h.rule, prog),
+      reqs: [
+        ...unlockReqs(h.rule, prog),
+        if (price != null)
+          UnlockReq('Get ${h.gemPrice} \u{1F48E} crystals',
+              progress: '${prog.gems} / ${h.gemPrice}',
+              fraction: (prog.gems / h.gemPrice).clamp(0.0, 1.0),
+              done: prog.gems >= h.gemPrice),
+      ],
       priceLabel: price,
       youHave: price == null ? null : 'You have ${prog.gems} \u{1F48E}',
       tip: unlockTip(h.rule, prog) ??
@@ -257,7 +297,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
               ? 'Crystals come from daily quests, first rank clears and stars.'
               : null),
       canBuy: !widget.firstTime && goalsDone && prog.gems >= h.gemPrice && h.gemPrice > 0,
-      onBuy: () => _buy(h),
+      onBuy: () => _confirmBuy(h, chosen, tier),
       accent: h.color,
       accentEdge: h.edge,
     );
@@ -302,7 +342,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
           stroke: 3,
         ),
       );
-      onTap = (_saving || (selected && !widget.firstTime)) ? null : () => _choose(h);
+      onTap = (_saving || (selected && !widget.firstTime)) ? null : () => _confirmChoose(h, chosen, tier);
     } else if (canBuy) {
       action = Block(
         color: affordable ? Rb.orange : Rb.panel,
@@ -312,7 +352,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: BlockText('BUY ${h.gemPrice} \u{1F48E}', size: 12, stroke: 3),
       );
-      onTap = _saving ? null : (affordable ? () => _buy(h) : () => _snack('Not enough \u{1F48E} crystals yet.'));
+      onTap = _saving ? null : (affordable ? () => _confirmBuy(h, chosen, tier) : () => _showHow(h, prog, tier, chosen));
     } else {
       action = Block(
         color: Rb.panel,
@@ -322,7 +362,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: BlockText('\u{1F512} ${hint ?? 'Locked'}', size: 11, stroke: 3),
       );
-      onTap = () => _showHow(h, prog, tier); // tap: how to unlock it
+      onTap = () => _showHow(h, prog, tier, chosen); // tap: how to unlock it
     }
 
     return PressBlock(

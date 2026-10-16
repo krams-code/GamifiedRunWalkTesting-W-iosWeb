@@ -12,6 +12,9 @@ class FriendLookup {
   const FriendLookup(this.status, {this.uid, this.data});
 }
 
+/// My relationship with another player.
+enum Relation { none, friend, sent, incoming, error }
+
 /// Outcome of actually sending the request (step 2, after the player confirms).
 enum AddResult { sent, accepted, error }
 
@@ -100,6 +103,20 @@ class FriendsService {
       return FriendLookup(LookupStatus.found, uid: other, data: profile);
     } catch (_) {
       return const FriendLookup(LookupStatus.error);
+    }
+  }
+
+  /// How I stand with [other] (for the Add Friend button on a player card).
+  static Future<Relation> relation(String me, String other) async {
+    try {
+      if ((await friends(me).doc(other).get()).exists) return Relation.friend;
+      final sent = await requests.doc('${me}_$other').get();
+      if (sent.exists && sent.data()?['status'] == 'pending') return Relation.sent;
+      final got = await requests.doc('${other}_$me').get();
+      if (got.exists && got.data()?['status'] == 'pending') return Relation.incoming;
+      return Relation.none;
+    } catch (_) {
+      return Relation.error;
     }
   }
 

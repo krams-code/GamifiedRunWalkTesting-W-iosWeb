@@ -8,8 +8,6 @@ import '../../widgets/avatar_preview.dart';
 import '../../utils/xp_milestones.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/emoji_icons.dart';
-import '../../constants/app_icons.dart';
-import '../../widgets/pixel_icon.dart';
 import '../../state/user_doc.dart';
 import '../../widgets/lottie_fx.dart';
 

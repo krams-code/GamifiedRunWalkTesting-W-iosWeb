@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/friends_service.dart';
+import '../../services/presence.dart';
+import '../../widgets/unlock_sheet.dart' show showInfoSheet;
 import '../../utils/player_stats.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/hero_bust.dart';
@@ -327,7 +329,38 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
   }
 
+  /// Duels are live races: the friend has to be online to take part.
+  void _unavailableNotice(String name, PresenceStatus st, [String? lastSeen]) {
+    final idle = st == PresenceStatus.idle;
+    showInfoSheet(
+      context,
+      title: idle ? '$name IS IDLE' : '$name IS OFFLINE',
+      message: idle
+          ? 'They have the app open but have not touched it for a few minutes, so they may not see your invite. Send a chat message first, and duel them when their dot turns green.'
+          : 'A duel is a live race, so your friend must be online to accept it.${lastSeen != null ? ' Last seen $lastSeen.' : ''} Chat with them, and challenge them when their dot turns green.',
+      art: Center(child: Text(idle ? '\u{1F634}' : '\u{1F4F4}', style: const TextStyle(fontSize: 44))),
+    );
+  }
+
+  /// Fresh check (not the cached dot) right before opening / sending a duel.
+  Future<bool> _friendIsOnline(String uid, String name) async {
+    PresenceStatus st = PresenceStatus.offline;
+    String? seen;
+    try {
+      final snap = await FriendsService.user(uid).get(const GetOptions(source: Source.server));
+      st = Presence.statusOf(snap.data());
+      seen = Presence.lastSeen(snap.data());
+    } catch (_) {}
+    if (st != PresenceStatus.online) {
+      if (mounted) _unavailableNotice(name, st, seen);
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _challengeSheet(String friendUid, String friendName) async {
+    if (!await _friendIsOnline(friendUid, friendName)) return;
+    if (!mounted) return;
     var km = 3;
     await showModalBottomSheet(
       context: context,
@@ -382,6 +415,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     onTap: () async {
                       Navigator.of(ctx).pop();
+                      // they may have left while this sheet was open
+                      if (!await _friendIsOnline(friendUid, friendName)) return;
                       try {
                         await FriendsService.sendChallenge(
                           me: _me,
@@ -549,7 +584,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 8),
+                          Center(
+                            child: PresenceBuilder(
+                              uid: uid,
+                              infoBuilder: (_, st, seen) => PresenceLabel(st, lastSeen: seen),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           BlockText('LEVEL ${lp.level}', size: 13, stroke: 3.5, color: Rb.neon),
                           const SizedBox(height: 4),
                           BlockBar(value: lp.fraction, height: 10, color: Rb.green),
@@ -582,17 +624,34 @@ class _FriendsScreenState extends State<FriendsScreen> {
                               ),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: PressBlock(
-                                  color: Rb.orange,
-                                  edge: Rb.orangeEdge,
-                                  depth: 4,
-                                  radius: 12,
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  onTap: () {
-                                    Navigator.of(ctx).pop();
-                                    _challengeSheet(uid, name);
+                                child: PresenceBuilder(
+                                  uid: uid,
+                                  builder: (_, st) {
+                                    final on = st == PresenceStatus.online;
+                                    return PressBlock(
+                                      color: on ? Rb.orange : Rb.slate,
+                                      edge: on ? Rb.orangeEdge : Rb.slateEdge,
+                                      depth: 4,
+                                      radius: 12,
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                      onTap: () {
+                                        if (!on) {
+                                          Navigator.of(ctx).pop();
+                                          _unavailableNotice(name, st);
+                                          return;
+                                        }
+                                        Navigator.of(ctx).pop();
+                                        _challengeSheet(uid, name);
+                                      },
+                                      child: Center(
+                                        child: Opacity(
+                                          opacity: on ? 1 : 0.5,
+                                          child: BlockText(on ? '⚔️ DUEL' : '⚔️ DUEL (${Presence.labelOf(st)})',
+                                              size: 12, stroke: 3.5),
+                                        ),
+                                      ),
+                                    );
                                   },
-                                  child: const Center(child: BlockText('⚔️ DUEL', size: 12, stroke: 3.5)),
                                 ),
                               ),
                             ],
@@ -831,7 +890,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
             onTap: () => _showProfile(f.id, name),
             child: Row(
               children: [
-                _Bust(profile: _profile(f.id)),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _Bust(profile: _profile(f.id)),
+                    Positioned(
+                      right: -4,
+                      bottom: -4,
+                      child: PresenceBuilder(
+                        uid: f.id,
+                        builder: (_, st) => PresenceDot(st),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: FutureBuilder<Map<String, dynamic>?>(
@@ -883,14 +955,24 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   ],
                 ),
                 const SizedBox(width: 8),
-                PressBlock(
-                  color: Rb.orange,
-                  edge: Rb.orangeEdge,
-                  depth: 4,
-                  radius: 12,
-                  padding: const EdgeInsets.all(10),
-                  onTap: () => _challengeSheet(f.id, name),
-                  child: const EmojiText('⚔️', style: TextStyle(fontSize: 18)),
+                PresenceBuilder(
+                  uid: f.id,
+                  builder: (_, st) {
+                    final on = st == PresenceStatus.online;
+                    return PressBlock(
+                      color: on ? Rb.orange : Rb.slate,
+                      edge: on ? Rb.orangeEdge : Rb.slateEdge,
+                      depth: 4,
+                      radius: 12,
+                      padding: const EdgeInsets.all(10),
+                      onTap: () =>
+                          on ? _challengeSheet(f.id, name) : _unavailableNotice(name, st),
+                      child: Opacity(
+                        opacity: on ? 1 : 0.45,
+                        child: const EmojiText('⚔️', style: TextStyle(fontSize: 18)),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

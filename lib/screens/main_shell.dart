@@ -1,4 +1,5 @@
 import '../services/sound.dart';
+import '../services/presence.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,8 @@ import '../state/evolution_state.dart';
 import 'character/hero_picker_screen.dart';
 import '../widgets/block_navbar.dart';
 import '../widgets/block_ui.dart';
+import '../widgets/evolution_checkin_dialog.dart';
+import '../widgets/block_inputs.dart' show blockSnack;
 import '../widgets/global_top_bar.dart';
 import '../widgets/onboarding_tutorial.dart';
 import '../widgets/tutorial_keys.dart';
@@ -29,6 +32,13 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  FriendWatcher? _friendWatcher;
+
+  @override
+  void dispose() {
+    _friendWatcher?.dispose();
+    super.dispose();
+  }
   // 0 = SHOP, 1 = GEAR, 2 = RUN, 3 = RANKS, 4 = ACTIVITY, 5 = PROFILE
   int _currentIndex = 2;
 
@@ -53,11 +63,22 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     // App-wide body-form state (follows sign-in/out by itself).
     EvolutionState.instance.start();
+    final me = FirebaseAuth.instance.currentUser;
+    if (me != null) {
+      Presence.I.start(me.uid); // green / orange / red dot for friends
+      _friendWatcher = FriendWatcher(me.uid, (name) {
+        if (mounted) {
+          blockSnack(context, '\u{1F7E2} $name is online \u2014 challenge them to a duel!');
+        }
+      })
+        ..start();
+    }
     Sound.I.music(Bgm.menu);
     PerfProbe.start(); // frame / jank meter (debug + profile builds only)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _maybeChooseHero();
       await _maybeStartTutorial();
+      await _maybeWeeklyCheckIn();
     });
   }
 
@@ -90,6 +111,37 @@ class _MainShellState extends State<MainShell> {
       _isTrackingActive = active;
       if (active) _currentIndex = 2;
     });
+  }
+
+  // ── Weekly check-in ────────────────────────────────────────────────────
+  // Once a week the check-in pops up by itself right after the app starts, so
+  // the hero's body keeps following the player's real progress. It cannot be
+  // done at any other time (the profile button stays locked until it is due).
+  Future<void> _maybeWeeklyCheckIn() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snap =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final d = snap.data();
+      if (d == null) return;
+      if (d['tutorial_done'] == false) return; // never during onboarding
+      if (!EvolutionState.isCheckInDue(d)) return;
+      if (!mounted) return;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      final r = await showEvolutionCheckIn(context);
+      if (!mounted || r == null) return;
+      blockSnack(
+        context,
+        r.improved
+            ? '\u{1F525} EVOLVED INTO ${r.after.label.toUpperCase()}!'
+                '${r.enduranceAwarded ? '  +${EvolutionState.enduranceBonus} ENDURANCE' : ''}'
+            : '\u{1F4BE} Check-in saved: ${r.after.label}',
+      );
+    } catch (_) {
+      // never block the app on the check-in
+    }
   }
 
   // First launch with heroes: accounts that never picked one choose now.

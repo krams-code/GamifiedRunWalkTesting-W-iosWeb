@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/sound.dart';
+import '../services/presence.dart';
 import 'block_ui.dart';
 
 /// ⚙ SETTINGS pop-up: music, sound effects, vibration.
@@ -72,6 +73,29 @@ class _SettingsSheet extends StatelessWidget {
                       ),
                     ),
                     _Switch(on: s.vibrateOn, onToggle: s.setVibrate),
+                  ]),
+                ),
+                const SizedBox(height: 10),
+                Block(
+                  color: Rb.panel,
+                  edge: Rb.panelEdge,
+                  depth: 5,
+                  radius: 14,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    const Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: BlockText('🟢 FRIEND ONLINE ALERTS', size: 15, stroke: 3.5),
+                        ),
+                      ),
+                    ),
+                    _Switch(
+                        on: Presence.I.friendAlerts,
+                        onToggle: Presence.I.setFriendAlerts),
                   ]),
                 ),
                 const SizedBox(height: 14),

@@ -1,4 +1,5 @@
 import 'services/sound.dart';
+import 'services/presence.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -60,7 +61,10 @@ class HakbangHeroApp extends StatelessWidget {
       // Browsers only allow sound after a tap: any touch wakes the music.
       builder: (context, child) => Listener(
         behavior: HitTestBehavior.translucent,
-        onPointerDown: (_) => Sound.I.userGesture(),
+        onPointerDown: (_) {
+          Sound.I.userGesture();
+          Presence.I.touch();
+        },
         child: child,
       ),
       theme: ThemeData(

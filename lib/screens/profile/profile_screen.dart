@@ -12,6 +12,8 @@ import '../../widgets/avatar_preview.dart';
 import '../../widgets/block_inputs.dart' show blockSnack;
 import '../../widgets/block_ui.dart';
 import '../../widgets/evolution_checkin_dialog.dart';
+import '../../widgets/unlock_sheet.dart';
+import '../../widgets/weight_history_card.dart';
 import '../../widgets/global_top_bar.dart' show confirmLogout;
 import '../../widgets/settings_sheet.dart';
 import '../character/character_creation_screen.dart';
@@ -85,6 +87,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Weekly / monthly weight check-in. The avatar swap itself is global and
   /// instant (EvolutionState); here we only refresh stats and say what happened.
   Future<void> _checkIn() async {
+    if (!EvolutionState.isCheckInDue(_user)) {
+      // one check-in a week: nobody can change their weight whenever they like
+      showInfoSheet(
+        context,
+        title: 'WEEKLY CHECK-IN',
+        message:
+            'Your next check-in opens in ${EvolutionState.timeLeftLabel(_user)}. '
+            'You update your weight once a week, so your progress is fair for everyone. '
+            "We'll remind you when it's time!",
+        art: const Center(child: Text('\u2696\uFE0F', style: TextStyle(fontSize: 46))),
+      );
+      return;
+    }
     final r = await showEvolutionCheckIn(context);
     if (!mounted || r == null) return;
     _load();
@@ -336,7 +351,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: BlockText(
                       EvolutionState.isCheckInDue(_user)
                           ? '⚖️ CHECK-IN ●'
-                          : '⚖️ CHECK-IN',
+                          : '⚖️ IN ${EvolutionState.timeLeftLabel(_user).toUpperCase()}',
                       size: 11,
                       stroke: 3,
                     ),
@@ -472,6 +487,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         summary('⏱️', _duration(f.totalActiveSeconds), 'ACTIVE TIME', Rb.blue, Rb.blueEdge),
       ]),
       const SizedBox(height: 14),
+      if (FirebaseAuth.instance.currentUser != null) ...[
+        WeightHistoryCard(
+          uid: FirebaseAuth.instance.currentUser!.uid,
+          currentKg: (_user['weight_kg'] as num?)?.toDouble(),
+        ),
+        const SizedBox(height: 14),
+      ],
       _module(
         emoji: '🏃‍♂️',
         title: 'PACE / AGILITY',

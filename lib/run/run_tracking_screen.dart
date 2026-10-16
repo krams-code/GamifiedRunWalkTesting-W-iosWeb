@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart' hide ActivityType;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/presence.dart';
 
 import 'package:hakbanghero/models/activity_model.dart';
 import 'package:hakbanghero/models/daily_quest_definitions.dart';
@@ -129,6 +130,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   @override
   void initState() {
     super.initState();
+    Presence.I.holdActive(true); // a run in progress is never "idle"
     _loadGhost();
 
     _challenge.onEvent = (e) => ChallengeAudio.instance.onEvent(e);
@@ -167,6 +169,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
   @override
   void dispose() {
+    Presence.I.holdActive(false);
     _positionSub?.cancel();
     _timer?.cancel();
 

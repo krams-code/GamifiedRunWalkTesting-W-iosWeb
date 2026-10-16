@@ -468,3 +468,65 @@ class _UnlockSheet extends StatelessWidget {
     );
   }
 }
+
+
+/// "Are you sure?" pop-up: CONFIRM runs [onConfirm], CANCEL just closes.
+Future<void> showConfirmSheet(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required Widget art,
+  required String confirmLabel,
+  required VoidCallback onConfirm,
+}) {
+  return showInfoSheet(
+    context,
+    title: title,
+    message: message,
+    art: art,
+    actionLabel: confirmLabel,
+    onAction: onConfirm,
+    closeLabel: 'CANCEL',
+  );
+}
+
+/// Same look as the unlock pop-up, for "you can't afford this yet".
+/// Shows how far the player is and where crystals / coins come from.
+Future<void> showNeedMoreSheet(
+  BuildContext context, {
+  required String what,
+  int needGems = 0,
+  int haveGems = 0,
+  int needCoins = 0,
+  int haveCoins = 0,
+  Widget? art,
+}) {
+  final reqs = <UnlockReq>[
+    if (needGems > 0)
+      UnlockReq('Get $needGems \u{1F48E} crystals',
+          progress: '$haveGems / $needGems',
+          fraction: (haveGems / needGems).clamp(0.0, 1.0),
+          done: haveGems >= needGems),
+    if (needCoins > 0)
+      UnlockReq('Get $needCoins \u{1FA99} coins',
+          progress: '$haveCoins / $needCoins',
+          fraction: (haveCoins / needCoins).clamp(0.0, 1.0),
+          done: haveCoins >= needCoins),
+  ];
+  final gemsShort = needGems > haveGems;
+  return showUnlockSheet(
+    context,
+    title: what,
+    kind: gemsShort ? 'NOT ENOUGH CRYSTALS' : 'NOT ENOUGH COINS',
+    art: art ??
+        Center(
+            child: Text(gemsShort ? '\u{1F48E}' : '\u{1FA99}',
+                style: const TextStyle(fontSize: 54))),
+    reqs: reqs,
+    tip: gemsShort
+        ? 'Crystals come from daily quests, first clears and stars on ranks, streak rewards and the weekly goal.'
+        : 'Coins come from every run. The more km, the more coins!',
+    accent: Rb.orange,
+    accentEdge: Rb.orangeEdge,
+  );
+}

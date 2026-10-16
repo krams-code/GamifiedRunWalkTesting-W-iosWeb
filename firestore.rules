@@ -147,9 +147,19 @@ service cloud.firestore {
           || nd('owned_heroes', []).size() > od('owned_heroes', []).size();
     }
 
+    // weight / height only change at the weekly check-in (6-day tolerance),
+    // and the first time they are set (old value missing)
+    function checkInOk() {
+      return (!changed('weight_kg') && !changed('height_cm') && !changed('body_tier'))
+        || od('weight_kg', null) == null
+        || (request.time - od('last_checkin_at', request.time - duration.value(30, 'd')))
+             >= duration.value(6, 'd');
+    }
+
     // ── put it together ──
     function economyOk(uid) {
       return
+        checkInOk() &&
         // money can always be SPENT, but only a run / duel / claim adds it
         (delta('coins') <= 0 || runOk(uid))
         && (delta('gems') <= 0 || runOk(uid) || duelWinOk(uid)
@@ -194,6 +204,16 @@ service cloud.firestore {
       allow create: if isMe(uid) && freshAccount();
       allow update: if isMe(uid) && economyOk(uid);
       allow delete: if isMe(uid);
+
+      // weekly weight history (profile chart)
+      match /weight_checkins/{id} {
+        allow read: if isMe(uid);
+        allow create: if isMe(uid)
+          && request.resource.data.weight_kg is number
+          && request.resource.data.weight_kg >= 20
+          && request.resource.data.weight_kg <= 400;
+        allow update, delete: if false;
+      }
 
       match /activities/{id} {
         allow read: if isMe(uid);

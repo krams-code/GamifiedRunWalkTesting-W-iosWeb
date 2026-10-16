@@ -265,6 +265,26 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
+  /// Changing hero asks "are you sure?" first; other saves go straight through.
+  void _askThenSave(String uid, _Data s) {
+    if (_heroD == s.heroId) {
+      _purchase(uid);
+      return;
+    }
+    final nh = heroById(_heroD);
+    final oh = heroById(s.heroId);
+    showConfirmSheet(
+      context,
+      title: 'CHANGE HERO?',
+      message: 'Switch from ${oh?.name ?? 'your hero'} to ${nh?.name ?? 'this hero'}? '
+          '${(nh?.costume ?? false) && !(oh?.costume ?? false) ? '${nh!.name} wears its own outfit, so your shop gear stays saved for SPROUT. ' : ''}'
+          'You can switch back any time.',
+      art: HeroStill(heroId: _heroD, tier: BodyTier.normal),
+      confirmLabel: 'YES, CHANGE',
+      onConfirm: () => _purchase(uid),
+    );
+  }
+
   void _openHeroSheet(HeroDef h, _Data s) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final goalsDone = h.rule.met(s.p);
@@ -274,7 +294,14 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       title: h.name,
       kind: '${h.rarityLabel} HERO',
       art: HeroStill(heroId: h.id, tier: BodyTier.normal),
-      reqs: unlockReqs(h.rule, s.p),
+      reqs: [
+        ...unlockReqs(h.rule, s.p),
+        if (price != null)
+          UnlockReq('Get ${h.gemPrice} \u{1F48E} crystals',
+              progress: '${s.p.gems} / ${h.gemPrice}',
+              fraction: (s.p.gems / h.gemPrice).clamp(0.0, 1.0),
+              done: s.p.gems >= h.gemPrice),
+      ],
       priceLabel: price,
       youHave: price == null ? null : 'You have ${_fmt(s.p.gems)} \u{1F48E}',
       tip: unlockTip(h.rule, s.p) ??
@@ -286,7 +313,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
           ? null
           : () {
               setState(() => _heroD = h.id);
-              _purchase(uid);
+              _askThenSave(uid, s);
             },
       accent: h.color,
       accentEdge: h.edge,
@@ -1263,16 +1290,25 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       edge = Rb.panelEdge;
     } else if (broke) {
       label = needGems > 0 ? 'NEED ${_fmt(needGems)} \u{1F48E}' : 'NEED ${_fmt(needCoins)} \u{1FA99}';
+      sub = 'Tap to see how to get more';
       fill = Rb.red;
       edge = Rb.redEdge;
+      onTap = () => showNeedMoreSheet(
+            context,
+            what: 'YOUR LOOK',
+            needGems: needGems > 0 ? cost.gems : 0,
+            haveGems: s.p.gems,
+            needCoins: needGems > 0 || needCoins <= 0 ? 0 : cost.coins,
+            haveCoins: s.p.coins,
+          );
     } else if (cost.coins == 0 && cost.gems == 0) {
       label = 'SAVE';
       sub = 'Wear this look';
-      onTap = () => _purchase(uid);
+      onTap = () => _askThenSave(uid, s);
     } else {
       label = 'BUY';
       sub = _costText(cost);
-      onTap = () => _purchase(uid);
+      onTap = () => _askThenSave(uid, s);
     }
 
     return Row(

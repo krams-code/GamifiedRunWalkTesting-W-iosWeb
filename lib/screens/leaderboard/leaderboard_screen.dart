@@ -8,6 +8,8 @@ import '../../widgets/hero_sprite.dart';
 import '../../services/friends_service.dart';
 import '../friends/friends_screen.dart';
 import '../../widgets/lottie_fx.dart';
+import '../../widgets/player_card_sheet.dart';
+import '../../services/presence.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -262,17 +264,22 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   // ───────────────────────── player row ─────────────────────────
 
   Widget _buildRow(int rank, _LeaderboardEntry entry, bool isMe) {
-    return Block(
+    return PressBlock(
       color: isMe ? const Color(0xFF1E4A66) : Rb.slate,
       edge: isMe ? Rb.blueEdge : Rb.slateEdge,
       depth: 6,
       radius: 16,
       padding: const EdgeInsets.all(10),
+      onTap: () => showPlayerCard(context,
+          uid: entry.uid, data: entry.data, rank: rank, isMe: isMe),
       child: Row(
         children: [
           _RankTile(rank: rank),
           const SizedBox(width: 10),
-          // framed bust thumbnail
+          // framed bust thumbnail (+ live online dot)
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
           Block(
             color: const Color(0xFF8FD0FF),
             edge: Colors.black,
@@ -283,6 +290,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               borderRadius: BorderRadius.circular(9),
               child: _BustThumb(uid: entry.uid, data: entry.data, size: 66),
             ),
+          ),
+              Positioned(
+                right: -4,
+                bottom: -4,
+                child: PresenceDotFromData(entry.data, size: 15),
+              ),
+            ],
           ),
           const SizedBox(width: 10),
           Expanded(

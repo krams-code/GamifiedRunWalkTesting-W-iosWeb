@@ -135,11 +135,11 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
     final heightCm = _heightCm;
     final weightKg = _weightKg;
 
-    if (heightCm == null || heightCm < 100 || heightCm > 250) {
+    if (!widget.isEditMode && (heightCm == null || heightCm < 100 || heightCm > 250)) {
       _snack('Enter a height between 100 and 250 cm.');
       return;
     }
-    if (weightKg == null || weightKg < 25 || weightKg > 300) {
+    if (!widget.isEditMode && (weightKg == null || weightKg < 25 || weightKg > 300)) {
       _snack('Enter a weight between 25 and 300 kg.');
       return;
     }
@@ -161,9 +161,19 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
     );
 
     try {
+      final fields = profile.toFirestore();
+      if (widget.isEditMode) {
+        // weight and height only change through the weekly check-in
+        fields
+          ..remove('height_cm')
+          ..remove('weight_kg')
+          ..remove('body_tier');
+      }
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        ...profile.toFirestore(),
+        ...fields,
         if (!widget.isEditMode) ...{
+          // creating the hero counts as the first weekly check-in
+          'last_checkin_at': FieldValue.serverTimestamp(),
           // brand-new hero -> the free starter pack, nothing else
           ...StarterPack.toFirestore(),
           'hero_id': _heroId,
@@ -175,6 +185,18 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
           TutorialProgress.firstRunField: false,
         },
       });
+      if (!widget.isEditMode && fields['weight_kg'] is num) {
+        // first point of the weight chart (best effort)
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('weight_checkins')
+            .add({
+          'at': FieldValue.serverTimestamp(),
+          'height_cm': fields['height_cm'],
+          'weight_kg': fields['weight_kg'],
+        }).catchError((_) => FirebaseFirestore.instance.collection('users').doc(uid));
+      }
 
       if (!mounted) return;
 
@@ -221,14 +243,28 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
                     const SizedBox(height: 16),
                     _viewport(),
                     const SizedBox(height: 22),
-                    _panel('📏 BODY STATS', [
-                      _label('UNITS'),
-                      _unitToggle(),
-                      const SizedBox(height: 16),
-                      _isMetric ? _metricHeightField() : _imperialHeightFields(),
-                      const SizedBox(height: 16),
-                      _weightField(),
-                    ]),
+                    if (widget.isEditMode)
+                      _panel('📏 BODY STATS', [
+                        _label('UPDATED BY THE WEEKLY CHECK-IN'),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Your weight and height change once a week through the '
+                          'check-in on your Profile. Here you only change how your hero looks.',
+                          style: const TextStyle(
+                              color: Color(0xFFD0D5DB),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800),
+                        ),
+                      ])
+                    else
+                      _panel('📏 BODY STATS', [
+                        _label('UNITS'),
+                        _unitToggle(),
+                        const SizedBox(height: 16),
+                        _isMetric ? _metricHeightField() : _imperialHeightFields(),
+                        const SizedBox(height: 16),
+                        _weightField(),
+                      ]),
                     const SizedBox(height: 16),
                     if (!widget.isEditMode) ...[
                       _panel('🦸 CHOOSE YOUR HERO', [

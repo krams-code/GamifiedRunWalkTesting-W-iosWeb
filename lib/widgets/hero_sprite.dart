@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../constants/asset_paths.dart';
 import '../models/body_composition.dart';
 import '../models/character_profile.dart';
 import '../models/outfit_catalog.dart';
