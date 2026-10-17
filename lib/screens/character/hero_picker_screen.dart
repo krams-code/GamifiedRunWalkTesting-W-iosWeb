@@ -14,6 +14,24 @@ import '../../widgets/hero_rig.dart';
 import '../../state/user_doc.dart';
 import '../../widgets/lottie_fx.dart';
 
+/// Turns a Firestore error into something a tester can report.
+String saveErrorText(Object e, [String fallback = 'Could not save. Try again.']) {
+  if (e is FirebaseException) {
+    switch (e.code) {
+      case 'permission-denied':
+        return 'Blocked by the server rules (permission-denied). Publish the latest firestore.rules.';
+      case 'unavailable':
+      case 'deadline-exceeded':
+        return 'No connection. Check your internet and try again.';
+      case 'not-found':
+        return 'Your profile was not found. Log out and back in.';
+      default:
+        return '$fallback (${e.code})';
+    }
+  }
+  return fallback;
+}
+
 /// Choose a hero.
 ///
 ///  * [firstTime]: the one-time choice on day one. Only the starter heroes
@@ -65,8 +83,9 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         return;
       }
       _snack('${h.name} is now your hero!');
-    } catch (_) {
-      _snack('Could not save. Try again.');
+    } catch (e) {
+      debugPrint('hero save failed: $e');
+      _snack(saveErrorText(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -89,7 +108,8 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
       });
       _snack('\u{1F389} ${h.name} unlocked!');
     } catch (e) {
-      _snack(e == 'gems' ? 'Not enough \u{1F48E} crystals.' : 'Purchase failed. Try again.');
+      debugPrint('hero buy failed: $e');
+      _snack(e == 'gems' ? 'Not enough \u{1F48E} crystals.' : saveErrorText(e, 'Purchase failed. Try again.'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

@@ -303,6 +303,20 @@ service cloud.firestore {
         && nd('owned_heroes', []).hasAll(od('owned_heroes', []));
     }
 
+    // Picking / switching the hero touches ONLY hero_id and owned_heroes, and
+    // may add at most one FREE hero (price 0). This small check runs on its own
+    // so choosing a hero never depends on the long economy check below.
+    function heroSwitchOk() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['hero_id', 'owned_heroes'])
+        && nd('hero_id', '') is string
+        && nd('owned_heroes', []).hasAll(od('owned_heroes', []))
+        && nd('owned_heroes', []).size() <= od('owned_heroes', []).size() + 1
+        && (nd('owned_heroes', []).size() == od('owned_heroes', []).size()
+            || (heroGems(nd('owned_heroes', [])[od('owned_heroes', []).size()]) == 0
+                && heroUnlockedByRank(nd('owned_heroes', []), od('owned_heroes', []).size())));
+    }
+
     // a new account starts with the sign-up gift only
     function freshAccount() {
       return nd('coins', 0) <= 100 && nd('gems', 0) <= 10
@@ -328,7 +342,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn();                 // leaderboard + friend profiles
       allow create: if isMe(uid) && freshAccount();
-      allow update: if isMe(uid) && economyOk(uid);
+      allow update: if isMe(uid) && (heroSwitchOk() || economyOk(uid));
       allow delete: if isMe(uid);
 
       // weekly weight history (profile chart)
