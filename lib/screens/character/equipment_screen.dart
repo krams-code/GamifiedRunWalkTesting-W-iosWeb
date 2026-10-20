@@ -14,6 +14,7 @@ import '../../widgets/pixel_icon.dart';
 import '../shop/avatar_shop_screen.dart' show ItemCrop;
 import '../../state/user_doc.dart';
 import '../../widgets/lottie_fx.dart';
+import '../../widgets/unlock_sheet.dart' show showConfirmSheet;
 
 // ═════════════════════════════════════════════════════════════════
 //  WARDROBE (the GEAR tab): switch hero, and dress them with the
@@ -79,7 +80,27 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     }
   }
 
-  Future<void> _switchHero(HeroDef h) async {
+  /// Gear is only drawn on SPROUT. Tapping gear while wearing a costume asks
+  /// to switch back to SPROUT first.
+  void _askWear(HeroItem i, String heroId) {
+    final sprout = heroById(kDefaultHeroId);
+    final costume = heroById(heroId);
+    if (sprout == null) return;
+    showConfirmSheet(
+      context,
+      title: 'SWITCH TO SPROUT?',
+      message: '${costume?.name ?? 'Costumes'} comes with its own outfit, so gear '
+          'can only be worn by SPROUT, your main hero. Switch to SPROUT and wear ${i.name}?',
+      art: HeroStill(heroId: kDefaultHeroId, tier: BodyTier.normal),
+      confirmLabel: 'YES, SWITCH & WEAR',
+      onConfirm: () async {
+        await _switchHero(sprout, quiet: true);
+        await _wear(i, true);
+      },
+    );
+  }
+
+  Future<void> _switchHero(HeroDef h, {bool quiet = false}) async {
     final ref = _ref;
     if (ref == null || _busy) return;
     setState(() => _busy = true);
@@ -88,7 +109,11 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
         'hero_id': h.id,
         'owned_heroes': FieldValue.arrayUnion([h.id]),
       }, SetOptions(merge: true));
-      _snack('${h.name} is now your hero!');
+      if (!quiet) {
+        _snack(h.costume
+            ? 'You are now wearing the ${h.name} costume!'
+            : '${h.name} is back as your hero!');
+      }
     } catch (_) {
       _snack('Could not save. Try again.');
     } finally {
@@ -102,7 +127,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     if (ref == null) {
       return const Scaffold(
         backgroundColor: Rb.bg,
-        body: const LoadingRunner(),
+        body: LoadingRunner(),
       );
     }
     return Scaffold(
@@ -135,6 +160,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   Widget _body(BuildContext context, HeroProgress prog, HeroOutfit worn,
       String heroId, BodyTier tier) {
     final hero = heroById(heroId);
+    // costumes wear their own outfit: no gear is shown as worn on them
+    if (hero?.costume ?? false) worn = <String, String>{};
     final mine = [
       for (final i in heroItemsIn(_slot))
         if (isItemUnlocked(i, prog)) i,
@@ -177,7 +204,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                     const SizedBox(height: 6),
                     const BlockText('WEARING', size: 10, stroke: 3),
                     const SizedBox(height: 4),
-                    if (worn.isEmpty)
+                    if (hero?.costume ?? false)
+                      const Text('Its own costume outfit.',
+                          style: TextStyle(color: Colors.white, fontSize: 12))
+                    else if (worn.isEmpty)
                       const Text('Nothing yet. Pick items below.',
                           style: TextStyle(color: Colors.white, fontSize: 12))
                     else
@@ -230,10 +260,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
         const SizedBox(height: 12),
 
         // hero switcher
-        const BlockText('YOUR HEROES', size: 13, stroke: 3),
+        const BlockText('YOUR COSTUMES', size: 13, stroke: 3),
         const SizedBox(height: 6),
         SizedBox(
-          height: 92,
+          height: 104,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -246,6 +276,21 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
             ],
           ),
         ),
+        if (hero?.costume ?? false) ...[
+          const SizedBox(height: 8),
+          Block(
+            color: const Color(0xFF3A3F46),
+            edge: Rb.panelEdge,
+            depth: 3,
+            radius: 10,
+            padding: const EdgeInsets.all(8),
+            child: Text(
+              '\u{1F3AD} ${hero!.name} is a costume with its own outfit, so gear can\'t be worn on it. Tap a gear item to switch back to SPROUT and wear it.',
+              style: const TextStyle(
+                  color: Color(0xFFFFE9A8), fontSize: 11.5, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
 
         // slot tabs
@@ -330,6 +375,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
               SizedBox(height: 56, child: HeroStill(heroId: h.id, tier: tier)),
               const SizedBox(height: 2),
               Text(active ? '✔ ${h.name}' : h.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
             ],
@@ -346,7 +393,9 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
           depth: 4,
           radius: 12,
           padding: const EdgeInsets.all(6),
-          onTap: _busy ? null : () => _wear(i, !on),
+          onTap: _busy
+              ? null
+              : (heroIsCostume(heroId) ? () => _askWear(i, heroId) : () => _wear(i, !on)),
           child: Column(
             children: [
               AspectRatio(
@@ -355,7 +404,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   borderRadius: BorderRadius.circular(8),
                   child: ColoredBox(
                     color: const Color(0xFF8FD0FF),
-                    child: ItemCrop(item: i, heroId: heroId, tier: tier),
+                    child: ItemCrop(
+                        item: i,
+                        heroId: heroIsCostume(heroId) ? kDefaultHeroId : heroId,
+                        tier: tier),
                   ),
                 ),
               ),

@@ -15,8 +15,8 @@ class RunMode {
   final String id; // saved on the activity document
   final RunLoop loop;
   final String emoji;
-  final String name; // "NOVICE RANK"
-  final String mapName; // "The Verdant Vale"
+  final String name; // "BEGINNER LEVEL"
+  final String mapName; // "Park Loop"
 
   /// Distance to clear. Null = no target (Endless).
   final double? targetKm;
@@ -24,7 +24,7 @@ class RunMode {
   /// Stage clock in minutes. Null = no clock (Endless).
   final int? clockMinutes;
 
-  /// Multiplier on XP, coins and challenge crystals.
+  /// Multiplier on XP, coins and challenge coins.
   final double rewardMult;
 
   final EventPlan events;
@@ -34,8 +34,8 @@ class RunMode {
   /// Map picture used as the live-run background and on the mode cards.
   final String mapAsset;
 
-  /// One-time bonus crystals for the FIRST clear of this rank.
-  final int firstClearGems;
+  /// One-time bonus coins for the FIRST clear of this rank.
+  final int firstClearCoins;
 
   /// Rank that must be cleared (>= 1 star) before this one opens. Null = open.
   final String? requiresId;
@@ -57,7 +57,7 @@ class RunMode {
     required this.color,
     required this.edge,
     required this.mapAsset,
-    this.firstClearGems = 0,
+    this.firstClearCoins = 0,
     this.requiresId,
     this.isTrial = false,
   });
@@ -93,7 +93,7 @@ class RunMode {
     return need == null || starsIn(records, need) > 0;
   }
 
-  /// "Clear NOVICE RANK to unlock" (null when already open / no requirement).
+  /// "Clear BEGINNER LEVEL to unlock" (null when already open / no requirement).
   String? get lockHint {
     final need = requiresId;
     if (need == null) return null;
@@ -101,8 +101,8 @@ class RunMode {
     return r == null ? null : 'Clear ${r.name} to unlock';
   }
 
-  /// Crystals for every NEW star earned on a rank (after the first clear).
-  static const int starGems = 5;
+  /// Coins for every NEW star earned on a rank (after the first clear).
+  static const int starCoins = 50;
 
   /// Stars for a cleared stage, by how much of the clock was left:
   /// ★ clear · ★★ clear with 1/3+ of the clock left · ★★★ with 1/2+ left.
@@ -157,10 +157,10 @@ class RunMode {
 
   String get multLabel => '${rewardMult.toStringAsFixed(1)}x';
 
-  /// "1.0x XP & Crystals" / "+0.2x XP & Crystals per km"
+  /// "1.0x XP & Coins" / "+0.2x XP & Coins per km"
   String get rewardLabel => isEndless
-      ? '+$multLabel XP & Crystals per km'
-      : '$multLabel XP & Crystals';
+      ? '+$multLabel XP & Coins per km'
+      : '$multLabel XP & Coins';
 
   String get eventLabel {
     switch (events) {
@@ -218,7 +218,7 @@ class RunMode {
         return [
           '\u26A1 1 random Sprint Quest will appear mid-run: cover '
               '${cfg!.sprintTargetMeters.round()} m in ${cfg.sprintSeconds} s '
-              '(+${cfg.sprintBonusXp} XP, +${cfg.sprintBonusGems} \u{1F48E}).',
+              '(+${cfg.sprintBonusXp} XP, +${cfg.sprintBonusCoins} \u{1FA99}).',
         ];
       case EventPlan.intervals:
         return const [
@@ -250,8 +250,8 @@ const RunMode kNovice = RunMode(
   id: 'stage_novice',
   loop: RunLoop.stage,
   emoji: '\u{1F7E2}',
-  name: 'NOVICE RANK',
-  mapName: 'The Verdant Vale',
+  name: 'BEGINNER LEVEL',
+  mapName: 'Park Loop',
   targetKm: 2.0,
   clockMinutes: 20,
   rewardMult: 1.0,
@@ -259,15 +259,15 @@ const RunMode kNovice = RunMode(
   color: Color(0xFF00B06F),
   edge: Color(0xFF006B44),
   mapAsset: 'assets/images/maps/verdant_vale.jpg',
-  firstClearGems: 10,
+  firstClearCoins: 100,
 );
 
 const RunMode kVanguard = RunMode(
   id: 'stage_vanguard',
   loop: RunLoop.stage,
   emoji: '\u{1F7E1}',
-  name: 'VANGUARD RANK',
-  mapName: 'The Ember Plains',
+  name: 'INTERMEDIATE LEVEL',
+  mapName: 'City Streets',
   targetKm: 3.5,
   clockMinutes: 30,
   rewardMult: 1.5,
@@ -275,7 +275,7 @@ const RunMode kVanguard = RunMode(
   color: Color(0xFFD98E00),
   edge: Color(0xFF7A4B00),
   mapAsset: 'assets/images/maps/ember_plains.jpg',
-  firstClearGems: 25,
+  firstClearCoins: 250,
   requiresId: 'stage_novice',
 );
 
@@ -283,8 +283,8 @@ const RunMode kSlayer = RunMode(
   id: 'stage_slayer',
   loop: RunLoop.stage,
   emoji: '\u{1F534}',
-  name: 'SLAYER RANK',
-  mapName: 'The Abyss Citadel',
+  name: 'ADVANCED LEVEL',
+  mapName: 'Hill Road',
   targetKm: 5.0,
   clockMinutes: 40,
   rewardMult: 2.5,
@@ -292,7 +292,7 @@ const RunMode kSlayer = RunMode(
   color: Color(0xFFE5484D),
   edge: Color(0xFF7A1C20),
   mapAsset: 'assets/images/maps/abyss_citadel.jpg',
-  firstClearGems: 50,
+  firstClearCoins: 500,
   requiresId: 'stage_vanguard',
 );
 
@@ -300,8 +300,8 @@ const RunMode kEndless = RunMode(
   id: 'endless',
   loop: RunLoop.endless,
   emoji: '♾️',
-  name: 'ENDLESS RUN',
-  mapName: 'The Open Road',
+  name: 'FREE RUN',
+  mapName: 'Open Road',
   targetKm: null,
   clockMinutes: null,
   rewardMult: 0.2,
@@ -309,8 +309,8 @@ const RunMode kEndless = RunMode(
   color: Color(0xFF5B3A9E),
   edge: Color(0xFF2A1A52),
   mapAsset: 'assets/images/maps/open_road.jpg',
-  // Endless opens with the first clear of NOVICE RANK, so a brand-new hero
-  // starts with exactly ONE choice: run NOVICE to unlock the rest.
+  // Endless opens with the first clear of BEGINNER LEVEL, so a brand-new hero
+  // starts with exactly ONE choice: run BEGINNER to unlock the rest.
   requiresId: 'stage_novice',
 );
 
@@ -319,7 +319,7 @@ const RunMode kInterval = RunMode(
   loop: RunLoop.interval,
   emoji: '\u26A1',
   name: 'INTERVAL RUN',
-  mapName: 'The Thunder Track',
+  mapName: 'Track Intervals',
   targetKm: null,
   clockMinutes: 12,
   rewardMult: 1.3,
@@ -327,7 +327,7 @@ const RunMode kInterval = RunMode(
   color: Color(0xFF0097C4),
   edge: Color(0xFF005A75),
   mapAsset: 'assets/images/maps/open_road.jpg',
-  // like Endless, it opens with the first clear of NOVICE RANK
+  // like Endless, it opens with the first clear of BEGINNER LEVEL
   requiresId: 'stage_novice',
 );
 
@@ -343,26 +343,26 @@ class _TrialSpec {
   final double km;
   final List<int> minutes; // easiest first
   final double baseMult;
-  final List<int> gems; // first-clear crystals per time goal
+  final List<int> firstCoins; // first-clear coins per time goal
   final String mapName;
   final String mapAsset;
   final Color color;
   final Color edge;
   const _TrialSpec(this.key, this.label, this.km, this.minutes, this.baseMult,
-      this.gems, this.mapName, this.mapAsset, this.color, this.edge);
+      this.firstCoins, this.mapName, this.mapAsset, this.color, this.edge);
 }
 
 const List<_TrialSpec> _kTrialSpecs = [
-  _TrialSpec('2k', '2 KM', 2.0, [15, 12, 10], 1.2, [10, 15, 20],
+  _TrialSpec('2k', '2 KM', 2.0, [15, 12, 10], 1.2, [100, 150, 200],
       'The Sprint Lane', 'assets/images/maps/verdant_vale.jpg',
       Color(0xFF1FA2A6), Color(0xFF0B5D60)),
-  _TrialSpec('5k', '5 KM', 5.0, [40, 32, 27], 1.6, [20, 30, 40],
+  _TrialSpec('5k', '5 KM', 5.0, [40, 32, 27], 1.6, [200, 300, 400],
       'The Tempo Trail', 'assets/images/maps/ember_plains.jpg',
       Color(0xFF3B7DD8), Color(0xFF1B3F73)),
-  _TrialSpec('10k', '10 KM', 10.0, [80, 65, 55], 2.0, [40, 60, 80],
+  _TrialSpec('10k', '10 KM', 10.0, [80, 65, 55], 2.0, [400, 600, 800],
       'The Endurance Ridge', 'assets/images/maps/abyss_citadel.jpg',
       Color(0xFF8A4FD8), Color(0xFF45247A)),
-  _TrialSpec('42k', 'MARATHON', 42.195, [390, 330, 270], 2.8, [100, 150, 250],
+  _TrialSpec('42k', 'MARATHON', 42.195, [390, 330, 270], 2.8, [1000, 1500, 2500],
       'The Marathon Road', 'assets/images/maps/open_road.jpg',
       Color(0xFFC2332E), Color(0xFF6A1714)),
 ];
@@ -394,7 +394,7 @@ List<RunMode> _buildTrials() {
         color: sp.color,
         edge: sp.edge,
         mapAsset: sp.mapAsset,
-        firstClearGems: sp.gems[i],
+        firstClearCoins: sp.firstCoins[i],
         requiresId: prev,
       ));
       prev = id;

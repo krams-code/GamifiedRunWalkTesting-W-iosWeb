@@ -195,7 +195,7 @@ class PreRunView extends StatelessWidget {
                 const SizedBox(height: 2),
                 BlockText(g.label, size: 10, stroke: 2.5,
                     color: const Color(0xFFD7C8FF)),
-                const BlockText('Beat it for +${GhostResult.winGems} \u{1F48E}',
+                const BlockText('Beat it for +${GhostResult.winCoins} \u{1FA99}',
                     size: 9.5, stroke: 2.5, color: Color(0xFFFFD21F)),
               ],
             ),
@@ -447,7 +447,7 @@ class PreRunView extends StatelessWidget {
           const SizedBox(width: 10),
           const Expanded(
             child: BlockText(
-              'Tap PLAY STAGE to choose STAGE MODE (3 ranks) or ENDLESS RUN. Clear a rank to unlock the next!',
+              'Tap CHOOSE RUN to choose GOAL MODE (3 levels) or FREE RUN. Clear a level to unlock the next!',
               size: 11,
               stroke: 3,
             ),
@@ -568,7 +568,7 @@ class PreRunView extends StatelessWidget {
               );
               if (mode != null) onStart(mode);
             },
-            child: const Center(child: BlockText('▶ PLAY STAGE', size: 26, stroke: 5)),
+            child: const Center(child: BlockText('▶ CHOOSE RUN', size: 26, stroke: 5)),
           ),
           ),
         ),
@@ -577,8 +577,8 @@ class PreRunView extends StatelessWidget {
   }
 }
 
-/// Wraps the PLAY STAGE button. When the walkthrough ends for a brand-new
-/// hero it opens the Mode panel in "first run" mode (NOVICE is the only
+/// Wraps the CHOOSE RUN button. When the walkthrough ends for a brand-new
+/// hero it opens the Mode panel in "first run" mode (BEGINNER is the only
 /// choice, and the panel can't be dismissed).
 class _FirstModeGate extends StatefulWidget {
   final Object? records;

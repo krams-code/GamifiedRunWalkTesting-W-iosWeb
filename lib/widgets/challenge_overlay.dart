@@ -381,8 +381,8 @@ class _ResultBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          if (sprint && result.bonusGems > 0)
-            BlockText('💎 +${result.bonusGems} MANA CRYSTALS',
+          if (sprint && result.bonusCoins > 0)
+            BlockText('🪙 +${result.bonusCoins} COINS',
                 size: 18, stroke: 4.5, color: Rb.neon),
           if (result.lootChest) ...[
             const BlockText('📦 LOOT CHEST DETECTED!',

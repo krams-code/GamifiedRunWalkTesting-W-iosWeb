@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'hero_picker_screen.dart' show saveErrorText;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -209,7 +210,8 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
         );
       }
     } catch (e) {
-      _snack('Failed to save character. Try again.');
+      debugPrint('character save failed: $e');
+      _snack(saveErrorText(e, 'Failed to save character.'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -267,8 +269,8 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
                       ]),
                     const SizedBox(height: 16),
                     if (!widget.isEditMode) ...[
-                      _panel('🦸 CHOOSE YOUR HERO', [
-                        _label('YOU CAN UNLOCK MORE HEROES LATER'),
+                      _panel('🎭 CHOOSE YOUR COSTUME', [
+                        _label('YOU CAN UNLOCK MORE COSTUMES LATER'),
                         const SizedBox(height: 8),
                         _heroChoices(),
                       ]),
@@ -535,142 +537,4 @@ class _CharacterCreationScreenState extends State<CharacterCreationScreen> {
         suffix: _unit(_isMetric ? 'kg' : 'lbs'),
       );
 
-  // ── swatches: rounded-square tiles that bounce when tapped ──
-  Widget _swatchRow(List<String> hexList, String selected, ValueChanged<String> onPick) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 14,
-      children: [
-        for (final hex in hexList)
-          _BounceTile(
-            selected: hex == selected,
-            onTap: () => onPick(hex),
-            child: ColoredBox(color: _colorFromHex(hex)),
-          ),
-      ],
-    );
-  }
-
-  /// Hair colours offered here: the free presets (Black, Brown, Blonde).
-  /// When editing, the colour the hero already wears stays available too.
-  /// Everything else is bought in the Shop.
-  List<String> get _hairColorChoices => widget.isEditMode
-      ? <String>{...StarterPack.hairColors, _hairColor}.toList()
-      : StarterPack.hairColors;
-
-  /// Hair style / expression / clothes are locked to the starter set.
-  Widget _starterPackNote() => Block(
-        color: Rb.slate,
-        edge: Rb.slateEdge,
-        depth: 4,
-        radius: 12,
-        padding: const EdgeInsets.all(10),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            BlockText('🎁 STARTER PACK', size: 12, stroke: 3.5, color: Rb.gold),
-            SizedBox(height: 4),
-            BlockText(
-              'Wavy Mane hair • Default face • Training outfit.\n'
-              'Unlock more styles in the 🛒 Shop and on the Milestone path!',
-              size: 10,
-              stroke: 2.5,
-              color: Color(0xFFB8BDC4),
-            ),
-          ],
-        ),
-      );
-
-  Color _colorFromHex(String hex) =>
-      Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
-}
-
-/// Thick rounded-square tile: 3px black border + hard bottom shadow.
-/// Bounces on tap; the selected tile sits pushed down with a gold ring + ✔.
-class _BounceTile extends StatefulWidget {
-  final bool selected;
-  final VoidCallback onTap;
-  final Widget child;
-  final double? size; // null = fills the width, square
-
-  const _BounceTile({
-    required this.selected,
-    required this.onTap,
-    required this.child,
-    this.size = 48,
-  });
-
-  @override
-  State<_BounceTile> createState() => _BounceTileState();
-}
-
-class _BounceTileState extends State<_BounceTile> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
-
-  late final Animation<double> _scale = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.88), weight: 25),
-    TweenSequenceItem(
-        tween: Tween(begin: 0.88, end: 1.14).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 40),
-    TweenSequenceItem(
-        tween: Tween(begin: 1.14, end: 1.0).chain(CurveTween(curve: Curves.bounceOut)),
-        weight: 35),
-  ]).animate(_c);
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sel = widget.selected;
-
-    Widget tile = Container(
-      margin: EdgeInsets.only(top: sel ? 4 : 0, bottom: sel ? 0 : 4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: sel ? Rb.gold : Colors.black, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(0, sel ? 0 : 4),
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(9),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            widget.child,
-            if (sel)
-              const Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: EdgeInsets.all(2),
-                  child: BlockText('✔', size: 14, stroke: 3.5),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-
-    tile = widget.size == null
-        ? AspectRatio(aspectRatio: 0.8, child: tile)
-        : SizedBox(width: widget.size, height: widget.size! + 4, child: tile);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        _c.forward(from: 0);
-        widget.onTap();
-      },
-      child: ScaleTransition(scale: _scale, child: tile),
-    );
-  }
 }

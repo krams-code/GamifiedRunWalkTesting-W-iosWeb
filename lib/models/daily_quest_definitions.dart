@@ -11,7 +11,7 @@ class DailyQuest {
   final String title;
   final String description;
   final double thresholdKm; // distance in km required to complete
-  final int crystalReward;  // gems awarded on completion
+  final int coinReward;  // coins awarded on completion
   final IconData icon;
   final Color color;
 
@@ -24,7 +24,7 @@ class DailyQuest {
     required this.title,
     required this.description,
     required this.thresholdKm,
-    required this.crystalReward,
+    required this.coinReward,
     required this.icon,
     required this.color,
     this.beforeHour,
@@ -39,7 +39,7 @@ const List<DailyQuest> kDailyQuests = [
     title: 'Morning Strider',
     description: 'Run 3 km before 9 AM',
     thresholdKm: 3.0,
-    crystalReward: 30,
+    coinReward: 300,
     icon: Icons.wb_sunny,
     color: Color(0xFFFFD700),
     beforeHour: 9,
@@ -49,7 +49,7 @@ const List<DailyQuest> kDailyQuests = [
     title: 'Distance Warrior',
     description: 'Cover 5 km today',
     thresholdKm: 5.0,
-    crystalReward: 75,
+    coinReward: 750,
     icon: Icons.bolt,
     color: Color(0xFF00FF41),
   ),
@@ -58,7 +58,7 @@ const List<DailyQuest> kDailyQuests = [
     title: 'Elite Runner',
     description: 'Cover 10 km today',
     thresholdKm: 10.0,
-    crystalReward: 150,
+    coinReward: 1500,
     icon: Icons.emoji_events,
     color: Color(0xFFFF6B35),
   ),

@@ -76,11 +76,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   static _StageInfo _stageFromKm(double km) {
-    if (km < 5)   return const _StageInfo('1-1', 'THE VERDANT VALE',    'Reach 5 km to unlock next stage');
+    if (km < 5)   return const _StageInfo('1-1', 'PARK LOOP',    'Reach 5 km to unlock next stage');
     if (km < 10)  return const _StageInfo('1-2', 'THE MISTY MARSHES',   'Reach 10 km to unlock next stage');
     if (km < 20)  return const _StageInfo('1-3', 'THE HAUNTED HIGHLANDS','Reach 20 km to unlock next stage');
     if (km < 35)  return const _StageInfo('2-1', 'THE ASHEN PEAKS',     'Reach 35 km to unlock next stage');
-    if (km < 55)  return const _StageInfo('2-2', 'THE CRYSTAL CAVERNS', 'Reach 55 km to unlock next stage');
+    if (km < 55)  return const _StageInfo('2-2', 'CITY STREETS', 'Reach 55 km to unlock next stage');
     if (km < 80)  return const _StageInfo('2-3', 'THE SHADOW FORTRESS', 'Reach 80 km to unlock next stage');
     if (km < 120) return const _StageInfo('3-1', 'THE FROZEN TUNDRA',   'Reach 120 km to unlock next stage');
     return const _StageInfo('3-2', 'THE DRAGON\'S LAIR', 'Max unlocked stage — legendary!');
@@ -97,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (uid == null) {
       return const Scaffold(
         backgroundColor: Rb.bg,
-        body: const LoadingRunner(),
+        body: LoadingRunner(),
       );
     }
 
@@ -614,8 +614,8 @@ class _QuestSlot extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       child: BlockText(
                         claimed
-                            ? '✓ ${quest.crystalReward} 💎'
-                            : '+${quest.crystalReward} 💎',
+                            ? '✓ ${quest.coinReward} 🪙'
+                            : '+${quest.coinReward} 🪙',
                         size: 10,
                         stroke: 2.5,
                       ),

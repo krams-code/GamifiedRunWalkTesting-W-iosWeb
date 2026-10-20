@@ -404,7 +404,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  BlockText('Winner gets \u{1F48E}${FriendsService.rewardFor[km]}  •  GPS only, no pausing',
+                  BlockText('Winner gets \u{1FA99}${FriendsService.rewardFor[km]}  •  GPS only, no pausing',
                       size: 11, stroke: 3, color: Rb.neon),
                   const SizedBox(height: 14),
                   PressBlock(
@@ -1093,7 +1093,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             BlockText('⚔️ ${other(d)} challenges you!', size: 13, stroke: 3.5),
             const SizedBox(height: 2),
             BlockText(
-                'Live ${d.data()['distance_km']} km race  •  winner \u{1F48E}${d.data()['reward']}',
+                'Live ${d.data()['distance_km']} km race  •  winner \u{1FA99}${d.data()['reward']}',
                 size: 10.5, stroke: 3),
             const SizedBox(height: 8),
             Row(
@@ -1163,7 +1163,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 width: double.infinity,
                 child: Center(
                   child: BlockText(
-                      'ENTER ROOM • ${d.data()['distance_km']} KM • \u{1F48E}${d.data()['reward']}',
+                      'ENTER ROOM • ${d.data()['distance_km']} KM • \u{1FA99}${d.data()['reward']}',
                       size: 12, stroke: 3.5),
                 ),
               ),
@@ -1172,7 +1172,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         for (final d in pendingOut)
           card(Rb.slate, Rb.slateEdge, [
             BlockText('Waiting for ${other(d)} to accept…', size: 12, stroke: 3),
-            BlockText('${d.data()['distance_km']} km  •  \u{1F48E}${d.data()['reward']}',
+            BlockText('${d.data()['distance_km']} km  •  \u{1FA99}${d.data()['reward']}',
                 size: 10, stroke: 2.5, color: const Color(0xFFB8BDC4)),
           ]),
         if (done.isNotEmpty) ...[
@@ -1184,7 +1184,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             card(Rb.slate, Rb.slateEdge, [
               BlockText(
                 d.data()['winner'] == _me
-                    ? '\u{1F3C6} You beat ${other(d)} — +\u{1F48E}${d.data()['reward']}'
+                    ? '\u{1F3C6} You beat ${other(d)} — +\u{1FA99}${d.data()['reward']}'
                     : d.data()['status'] == 'forfeit'
                         ? '${other(d)} left the race'
                         : '${other(d)} won this duel (${d.data()['distance_km']} km)',

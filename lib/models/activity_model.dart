@@ -70,7 +70,7 @@ class ActivitySession {
     final secsPerKm = durationSeconds / distanceKm;
     final m = secsPerKm ~/ 60;
     final s = (secsPerKm % 60).toInt();
-    return "${m}'${s.toString().padLeft(2, '0')}\"";
+    return "$m'${s.toString().padLeft(2, '0')}\"";
   }
 
   Map<String, dynamic> toFirestore() => {

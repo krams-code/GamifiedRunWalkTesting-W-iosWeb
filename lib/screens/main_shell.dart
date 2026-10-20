@@ -78,6 +78,7 @@ class _MainShellState extends State<MainShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _maybeChooseHero();
       await _maybeStartTutorial();
+      await _migrateCrystals();
       await _maybeWeeklyCheckIn();
     });
   }
@@ -117,6 +118,21 @@ class _MainShellState extends State<MainShell> {
   // Once a week the check-in pops up by itself right after the app starts, so
   // the hero's body keeps following the player's real progress. It cannot be
   // done at any other time (the profile button stays locked until it is due).
+  /// Crystals were removed: coins are the only currency now. Anything left on
+  /// an old account is cashed in once (1 crystal = 10 coins).
+  Future<void> _migrateCrystals() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final ref = FirebaseFirestore.instance.collection('users').doc(uid);
+      final d = (await ref.get()).data();
+      final g = (d?['gems'] as num?)?.toInt() ?? 0;
+      if (g > 0) {
+        await ref.update({'coins': FieldValue.increment(g * 10), 'gems': 0});
+      }
+    } catch (_) {}
+  }
+
   Future<void> _maybeWeeklyCheckIn() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;

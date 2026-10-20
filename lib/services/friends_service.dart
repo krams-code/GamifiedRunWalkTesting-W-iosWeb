@@ -211,8 +211,8 @@ class FriendsService {
   // forfeit   a player left mid-race (the other claims the win)
   // declined / cancelled / expired
 
-  /// distance (km) -> Mana Crystals the winner earns.
-  static const Map<int, int> rewardFor = {1: 20, 3: 40, 5: 60, 10: 100};
+  /// distance (km) -> Coins the winner earns.
+  static const Map<int, int> rewardFor = {1: 200, 3: 400, 5: 600, 10: 1000};
   static const int lobbyMinutes = 15;
   static const int countdownSeconds = 5;
 
@@ -296,7 +296,7 @@ class FriendsService {
         'progress.$me': double.parse(km.toStringAsFixed(3)),
       });
       txn.update(user(me), {
-        'gems': FieldValue.increment((d['reward'] as num).toInt()),
+        'coins': FieldValue.increment((d['reward'] as num).toInt()),
         'last_duel_id': id, // rules check the prize against this challenge
       });
       won = true;
@@ -333,7 +333,7 @@ class FriendsService {
         'by_default': true,
       });
       txn.update(user(me), {
-        'gems': FieldValue.increment((d['reward'] as num).toInt()),
+        'coins': FieldValue.increment((d['reward'] as num).toInt()),
         'last_duel_id': id,
       });
       won = true;

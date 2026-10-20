@@ -101,7 +101,6 @@ class _SignupScreenState extends State<SignupScreen> {
         'level': 1,
         'xp': 0,
         'coins': 100,
-        'gems': 10,
         'heroic_souls': 0,
         'total_km': 0.0,
         'total_steps': 0,

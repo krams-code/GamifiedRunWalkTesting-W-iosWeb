@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart' hide ActivityType;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -71,7 +70,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
   // Stage record result of the run that just ended (shown on the summary)
   int _stageStars = 0;
-  int _stageBonusGems = 0;
+  int _stageBonusCoins = 0;
   bool _stageFirstClear = false;
   RunMode? _unlockedRank; // next rank this clear just opened
   RunMode? _pendingNextRank; // set when NEXT RANK is tapped on the summary
@@ -97,7 +96,6 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
   // ── Animations ─────────────────────────────────────────────────────────────
   late AnimationController _pulseCtrl;
-  late Animation<double> _pulse;
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fade;
@@ -139,16 +137,6 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
-
-    _pulse = Tween<double>(
-      begin: 0.85,
-      end: 1.0,
-    ).animate(
-      CurvedAnimation(
-        parent: _pulseCtrl,
-        curve: Curves.easeInOut,
-      ),
-    );
 
     _fadeCtrl = AnimationController(
       vsync: this,
@@ -223,7 +211,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     final m = secsPerKm ~/ 60;
     final s = (secsPerKm % 60).toInt();
 
-    return "${m}'${s.toString().padLeft(2, '0')}\"";
+    return "$m'${s.toString().padLeft(2, '0')}\"";
   }
 
   double get _avgSpeed {
@@ -456,7 +444,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
       _outcome = null;
       _outcomeGood = false;
       _stageStars = 0;
-      _stageBonusGems = 0;
+      _stageBonusCoins = 0;
       _stageFirstClear = false;
       _unlockedRank = null;
 
@@ -658,7 +646,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     // finishes is simply abandoned (not counted).
     final challengeRecords = List<ChallengeRecord>.of(_challenge.records);
     final bonusXp = _challenge.bonusXp;
-    final bonusGems = _challenge.bonusGems;
+    final bonusCoins = _challenge.bonusCoins;
     final lootChests = _challenge.lootChests;
     _summaryChallenges = challengeRecords;
 
@@ -666,7 +654,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     final ghostResult =
         GhostResult.judge(_raceGhost, _distanceKm, _elapsedSeconds);
     _summaryGhost = ghostResult;
-    final ghostGems = ghostResult?.won == true ? GhostResult.winGems : 0;
+    final ghostCoins = ghostResult?.won == true ? GhostResult.winCoins : 0;
 
     // Determine final activity type by majority vote of speed samples.
     ActivityType finalType = _userPick;
@@ -712,8 +700,8 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
 
     final coins = RunRewards.coins(km: _distanceKm, mult: mult);
 
-    // Challenge crystals scale with the mode; the ghost prize stays fixed.
-    final modeGems = (bonusGems * mult).round();
+    // Challenge bonus coins scale with the mode; the ghost prize stays fixed.
+    final modeBonus = (bonusCoins * mult).round();
 
     final sessionStart =
         DateTime.now().subtract(
@@ -791,7 +779,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         ghost: ghostResult?.toMap(),
         xp: xp,
         coins: coins,
-        gems: modeGems + ghostGems,
+        bonusCoins: modeBonus + ghostCoins,
         lootChests: lootChests,
         elapsedSeconds: _elapsedSeconds,
         interval: interval,
@@ -800,7 +788,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         final r = await RunSaver.save(payload).timeout(RunSaver.timeout);
         _newlyCompletedQuests = r.completedQuests;
         _stageStars = _mode.isTrial ? 0 : r.stars;
-        _stageBonusGems = r.bonusGems;
+        _stageBonusCoins = r.bonusCoins;
         _stageFirstClear = r.firstClear;
         _unlockedRank = r.unlockedRank;
         _intervalNewBest = r.intervalNewBest;
@@ -839,7 +827,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         Sound.I.play(Sfx.unlock);
       } else if (_stageStars > 0) {
         Sound.I.play(Sfx.star);
-      } else if (_newlyCompletedQuests.isNotEmpty || _stageBonusGems > 0) {
+      } else if (_newlyCompletedQuests.isNotEmpty || _stageBonusCoins > 0) {
         Sound.I.play(Sfx.gem);
       }
     });
@@ -867,7 +855,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         outcome: _outcome,
         outcomeGood: _outcomeGood,
         stars: _stageStars,
-        stageBonusGems: _stageBonusGems,
+        stageBonusCoins: _stageBonusCoins,
         firstClear: _stageFirstClear,
         unlockedRank: _unlockedRank,
         onNextRank: _unlockedRank == null ? null : _onNextRank,

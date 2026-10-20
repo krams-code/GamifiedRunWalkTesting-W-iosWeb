@@ -5,7 +5,6 @@ import 'run_mode.dart';
 /// read once from the users/{uid} map so the shop, wardrobe and hero picker
 /// can never disagree.
 class HeroProgress {
-  final int gems;
   final int coins;
   final int xp;
   final int level;
@@ -19,7 +18,6 @@ class HeroProgress {
   final Set<String> ownedHeroes;
 
   const HeroProgress({
-    this.gems = 0,
     this.coins = 0,
     this.xp = 0,
     this.level = 1,
@@ -35,7 +33,6 @@ class HeroProgress {
         v is List ? v.whereType<String>().toSet() : <String>{};
     final xp = (m['xp'] as num?)?.toInt() ?? 0;
     return HeroProgress(
-      gems: (m['gems'] as num?)?.toInt() ?? 0,
       coins: (m['coins'] as num?)?.toInt() ?? 0,
       xp: xp,
       level: LevelProgress.fromXp(xp).level,

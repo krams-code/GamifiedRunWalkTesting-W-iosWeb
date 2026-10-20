@@ -79,7 +79,7 @@ class StageBriefingView extends StatelessWidget {
           const SizedBox(height: 6),
           BlockText(
             stars == 0
-                ? 'FIRST CLEAR BONUS: +${mode.firstClearGems} \u{1F48E}   \u2022   opens the next time goal'
+                ? 'FIRST CLEAR BONUS: +${mode.firstClearCoins} \u{1FA99}   \u2022   opens the next time goal'
                 : 'CLEARED${best == null ? '' : '   \u2022   BEST ${_hms(best)}'}',
             size: 10.5,
             stroke: 3,
@@ -182,7 +182,7 @@ class StageBriefingView extends StatelessWidget {
             children: [
               _stat('\u{1F3AF}', 'TARGET', '${mode.targetKm!.toStringAsFixed(1)} KM'),
               _stat('⏱', 'CLOCK', '${mode.clockMinutes} MIN'),
-              _stat('\u{1F48E}', 'REWARDS', mode.multLabel),
+              _stat('\u{1FA99}', 'REWARDS', mode.multLabel),
             ],
           ),
           const SizedBox(height: 14),
@@ -237,8 +237,8 @@ class StageBriefingView extends StatelessWidget {
                 const SizedBox(height: 6),
                 BlockText(
                   stars == 0
-                      ? 'FIRST CLEAR BONUS: +${mode.firstClearGems} \u{1F48E}   •   EACH NEW STAR: +${RunMode.starGems} \u{1F48E}'
-                      : 'EACH NEW STAR: +${RunMode.starGems} \u{1F48E}${best == null ? '' : '   •   BEST ${_mmss(best)}'}',
+                      ? 'FIRST CLEAR BONUS: +${mode.firstClearCoins} \u{1FA99}   •   EACH NEW STAR: +${RunMode.starCoins} \u{1FA99}'
+                      : 'EACH NEW STAR: +${RunMode.starCoins} \u{1FA99}${best == null ? '' : '   •   BEST ${_mmss(best)}'}',
                   size: 10.5,
                   stroke: 3,
                   color: Rb.neon,

@@ -103,7 +103,7 @@ class _GameStageState extends State<GameStage>
                     width: 76,
                     height: 12,
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.28),
+                      color: Colors.black.withValues(alpha: 0.28),
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
@@ -124,7 +124,7 @@ class _GameStageState extends State<GameStage>
                 if (widget.paused)
                   Positioned.fill(
                     child: Container(
-                      color: Colors.black.withOpacity(0.35),
+                      color: Colors.black.withValues(alpha: 0.35),
                       alignment: Alignment.center,
                       child: const BlockText('⏸ PAUSED', size: 26, stroke: 6),
                     ),

@@ -21,8 +21,8 @@ class HeroDef {
   /// Anyone may pick this one on day one (the first-launch choice).
   final bool starter;
 
-  /// Crystals to buy it (0 = not for sale, earned by [rule] instead).
-  final int gemPrice;
+  /// Coins to buy it (0 = not for sale, earned by [rule] instead).
+  final int coinPrice;
 
   /// Level / km / rank / star requirement (all must be met). A hero with BOTH
   /// a price and a rule must meet the rule first, then be bought.
@@ -42,14 +42,14 @@ class HeroDef {
     required this.color,
     required this.edge,
     this.starter = false,
-    this.gemPrice = 0,
+    this.coinPrice = 0,
     this.rule = UnlockRule.none,
     this.costume = true,
     this.rarity = 1,
   });
 
   /// "Earned" heroes unlock by themselves when [rule] is met.
-  bool get isEarned => gemPrice == 0 && !starter;
+  bool get isEarned => coinPrice == 0 && !starter;
 
   String get rarityLabel =>
       const ['STARTER', 'COMMON', 'RARE', 'EPIC', 'LEGENDARY'][rarity.clamp(0, 4)];
@@ -62,9 +62,9 @@ const String kDefaultHeroId = 'sprout';
 // unlock by themselves, and one big trophy hero):
 //
 //   STARTER   free, pick one on day one (the rest of the starters stay free)
-//   COMMON    buy with crystals (30-50): about 1-2 days of daily quests
+//   COMMON    buy with coins (30-50): about 1-2 days of daily quests
 //   RARE      EARNED by playing: a level, some km or a cleared rank
-//   EPIC      a small goal first, THEN buy (100-150 crystals)
+//   EPIC      a small goal first, THEN buy (100-150 coins)
 //   LEGENDARY the Slayer rank trophy
 const List<HeroDef> kHeroes = [
   // ── STARTERS (free) ──
@@ -106,14 +106,14 @@ const List<HeroDef> kHeroes = [
     rarity: 0,
   ),
 
-  // ── COMMON (buy with crystals) ──
+  // ── COMMON (buy with coins) ──
   HeroDef(
     id: 'bear',
     name: 'BEAR',
     tagline: 'Big hugs, big strides',
     color: Color(0xFF9C6B40),
     edge: Color(0xFF4A2F18),
-    gemPrice: 30,
+    coinPrice: 300,
   ),
   HeroDef(
     id: 'cat',
@@ -121,7 +121,7 @@ const List<HeroDef> kHeroes = [
     tagline: 'Lands on its feet',
     color: Color(0xFF7D8590),
     edge: Color(0xFF3A3F47),
-    gemPrice: 30,
+    coinPrice: 300,
   ),
   HeroDef(
     id: 'fox',
@@ -129,7 +129,7 @@ const List<HeroDef> kHeroes = [
     tagline: 'Quick and clever',
     color: Color(0xFFE8821E),
     edge: Color(0xFF7A3F0A),
-    gemPrice: 40,
+    coinPrice: 400,
   ),
   HeroDef(
     id: 'panda',
@@ -137,7 +137,7 @@ const List<HeroDef> kHeroes = [
     tagline: 'Chill, then unstoppable',
     color: Color(0xFF5A6068),
     edge: Color(0xFF23262A),
-    gemPrice: 40,
+    coinPrice: 400,
   ),
   HeroDef(
     id: 'dino',
@@ -145,7 +145,7 @@ const List<HeroDef> kHeroes = [
     tagline: 'Rawr! Fresh from the park',
     color: Color(0xFF3FA84A),
     edge: Color(0xFF1B5A22),
-    gemPrice: 50,
+    coinPrice: 500,
   ),
 
   // ── RARE (earned by playing) ──
@@ -211,7 +211,7 @@ const List<HeroDef> kHeroes = [
     tagline: 'Pace by magic',
     color: Color(0xFF6A4FC4),
     edge: Color(0xFF2E1F6B),
-    gemPrice: 100,
+    coinPrice: 1000,
     rule: UnlockRule(level: 6),
     rarity: 3,
   ),
@@ -221,7 +221,7 @@ const List<HeroDef> kHeroes = [
     tagline: 'Zero fatigue. Beep boop.',
     color: Color(0xFF4A6FA5),
     edge: Color(0xFF1A2E52),
-    gemPrice: 120,
+    coinPrice: 1200,
     rule: UnlockRule(level: 8),
     rarity: 3,
   ),
@@ -231,7 +231,7 @@ const List<HeroDef> kHeroes = [
     tagline: 'Breathes fire on the last km',
     color: Color(0xFF8A4FE0),
     edge: Color(0xFF3F1C7A),
-    gemPrice: 150,
+    coinPrice: 1500,
     rule: UnlockRule(stars: 5),
     rarity: 3,
   ),
@@ -283,24 +283,24 @@ bool hasChosenHero(Map<String, dynamic>? data) =>
 bool isHeroUnlocked(HeroDef h, HeroProgress p) {
   if (h.starter) return true;
   if (p.ownedHeroes.contains(h.id)) return true;
-  if (h.gemPrice > 0) return false;
+  if (h.coinPrice > 0) return false;
   return h.rule.met(p);
 }
 
-/// Why [h] is locked ("Reach LV 5", "120 💎"), null when open.
+/// Why [h] is locked ("Reach LV 5", "120 🪙"), null when open.
 String? heroLockHint(HeroDef h, HeroProgress p) {
   if (isHeroUnlocked(h, p)) return null;
   // priced hero with a goal: the goal comes first, then the purchase
-  if (h.gemPrice > 0 && !h.rule.isNone && !h.rule.met(p)) {
+  if (h.coinPrice > 0 && !h.rule.isNone && !h.rule.met(p)) {
     return h.rule.label ?? 'Locked';
   }
-  if (h.gemPrice > 0) return 'Buy for ${h.gemPrice} \u{1F48E}';
+  if (h.coinPrice > 0) return 'Buy for ${h.coinPrice} \u{1FA99}';
   return h.rule.label ?? 'Locked';
 }
 
 /// A priced hero is only for sale once its goal (if any) is met.
 bool heroCanBuy(HeroDef h, HeroProgress p) =>
-    h.gemPrice > 0 && !p.ownedHeroes.contains(h.id) && h.rule.met(p);
+    h.coinPrice > 0 && !p.ownedHeroes.contains(h.id) && h.rule.met(p);
 
 /// Costume heroes have one picture; the human hero has a layered rig.
 bool heroIsCostume(String heroId) => heroById(heroId)?.costume ?? false;

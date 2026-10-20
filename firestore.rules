@@ -16,9 +16,8 @@ service cloud.firestore {
 
     // ── catalog (generated from hero_items.dart / hero_roster.dart) ──
     // Unknown ids cost 999999999, so they can never be "bought".
-    function itemCoins(id) { return {'cap_red': 0, 'beanie_blue': 0, 'ears_cat': 120, 'wizard_hat': 0, 'helm_knight': 0, 'halo': 0, 'crown_gold': 0, 'stache': 60, 'glasses_round': 80, 'shades': 150, 'mask_hero': 0, 'tee_stripes': 100, 'hoodie_orange': 0, 'jersey_bolt': 0, 'gi_ninja': 0, 'armor_silver': 0, 'armor_gold': 0, 'shorts_red': 0, 'pants_track': 120, 'pants_camo': 0, 'shorts_gold': 0, 'sneak_red': 0, 'runners_neon': 0, 'boots_gold': 0, 'wing_shoes': 0, 'rocket_boots': 0, 'cape_red': 0, 'backpack': 130, 'wings_bat': 0, 'wings_angel': 0, 'scarf_red': 0, 'medal_gold': 0, 'belt_champ': 0, 'wavy_mane': 0, 'neutral': 0, 'outfit_01_default_starter_set': 0}.get(id, 999999999); }
-    function itemGems(id)  { return {'cap_red': 0, 'beanie_blue': 0, 'ears_cat': 0, 'wizard_hat': 0, 'helm_knight': 0, 'halo': 40, 'crown_gold': 0, 'stache': 0, 'glasses_round': 0, 'shades': 0, 'mask_hero': 0, 'tee_stripes': 0, 'hoodie_orange': 0, 'jersey_bolt': 20, 'gi_ninja': 35, 'armor_silver': 0, 'armor_gold': 0, 'shorts_red': 0, 'pants_track': 0, 'pants_camo': 25, 'shorts_gold': 0, 'sneak_red': 0, 'runners_neon': 0, 'boots_gold': 45, 'wing_shoes': 60, 'rocket_boots': 0, 'cape_red': 0, 'backpack': 0, 'wings_bat': 0, 'wings_angel': 80, 'scarf_red': 0, 'medal_gold': 0, 'belt_champ': 0, 'wavy_mane': 0, 'neutral': 0, 'outfit_01_default_starter_set': 0}.get(id, 999999999); }
-    function heroGems(id)  { return {'sprout': 0, 'frog': 0, 'penguin': 0, 'slime': 0, 'bear': 30, 'cat': 30, 'fox': 40, 'panda': 40, 'dino': 50, 'ghost': 0, 'shroom': 0, 'pirate': 0, 'ninja': 0, 'knight': 0, 'astronaut': 0, 'wizard': 100, 'mech': 120, 'dragon': 150, 'alien': 0, 'flame': 0}.get(id, 999999999); }
+    function itemCoins(id) { return {'cap_red': 0, 'beanie_blue': 0, 'ears_cat': 120, 'wizard_hat': 0, 'helm_knight': 0, 'halo': 400, 'crown_gold': 0, 'stache': 60, 'glasses_round': 80, 'shades': 150, 'mask_hero': 0, 'tee_stripes': 100, 'hoodie_orange': 0, 'jersey_bolt': 200, 'gi_ninja': 350, 'armor_silver': 0, 'armor_gold': 0, 'shorts_red': 0, 'pants_track': 120, 'pants_camo': 250, 'shorts_gold': 0, 'sneak_red': 0, 'runners_neon': 0, 'boots_gold': 450, 'wing_shoes': 600, 'rocket_boots': 0, 'cape_red': 0, 'backpack': 130, 'wings_bat': 0, 'wings_angel': 800, 'scarf_red': 0, 'medal_gold': 0, 'belt_champ': 0, 'wavy_mane': 0, 'neutral': 0, 'outfit_01_default_starter_set': 0}.get(id, 999999999); }
+    function heroCoins(id) { return {'sprout': 0, 'frog': 0, 'penguin': 0, 'slime': 0, 'bear': 300, 'cat': 300, 'fox': 400, 'panda': 400, 'dino': 500, 'ghost': 0, 'shroom': 0, 'pirate': 0, 'ninja': 0, 'knight': 0, 'astronaut': 0, 'wizard': 1000, 'mech': 1200, 'dragon': 1500, 'alien': 0, 'flame': 0}.get(id, 999999999); }
     // earned heroes that need a cleared rank: hero id -> stage id
     function heroStage(id) { return {'ninja': 'stage_novice', 'knight': 'stage_vanguard', 'flame': 'stage_slayer'}.get(id, ''); }
     // rank / trial targets: mode id -> [km, seconds]
@@ -42,15 +41,29 @@ service cloud.firestore {
         && nd('last_run_id', '').size() > 0;
     }
 
+    // Daily coin cap for runs/duels: the app keeps coins_today (+ the day
+    // number, Manila time) and the rules make that counter honest.
+    function coinDay() { return math.floor((request.time.toMillis() + 28800000) / 86400000); }
+    function dailyCoinsOk() {
+      return delta('coins') == 0
+        || (nd('coins_today_day', -1) == coinDay()
+            && nd('coins_today', 0)
+               == (od('coins_today_day', -1) == coinDay() ? od('coins_today', 0) : 0)
+                  + delta('coins')
+            && nd('coins_today', 0) <= 12000);
+    }
+
     function runAmountsOk(a) {
-      return delta('coins') >= 0 && delta('coins') <= a.coinsEarned
+      // coins = the run's own coins + bonuses (daily quests, rank clears and
+      // stars, challenges, ghost win). 1 crystal used to be worth 10 coins.
+      return delta('coins') >= 0
+        && dailyCoinsOk()
+        && delta('coins') <= a.coinsEarned + 1500 + 300 * a.distanceKm
+                             + (changed('stage_records') ? 3000 : 0)
         && delta('xp') >= 0 && delta('xp') <= a.xpEarned
         && delta('total_km') >= 0 && delta('total_km') <= a.distanceKm + 0.001
         && delta('total_sessions') == 1
         && delta('loot_chests') >= 0 && delta('loot_chests') <= 3
-        && delta('gems') >= 0
-        && delta('gems') <= 150 + 30 * a.distanceKm
-                            + (changed('stage_records') ? 300 : 0)
         && request.time > od('last_run_at', epoch()) + duration.value(30, 's');
     }
 
@@ -85,7 +98,7 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.winner == uid
         && getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.status == 'done'
         && get(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.status != 'done'
-        && delta('gems') <= getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.reward;
+        && delta('coins') <= getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.reward;
     }
 
     // ── daily streak and weekly goal gifts ──
@@ -94,20 +107,19 @@ service cloud.firestore {
         && nd('streak_claims', []).hasAll(od('streak_claims', []))
         && nd('streak_claim_at', null) == request.time
         && request.time > od('streak_claim_at', epoch()) + duration.value(12, 'h')
-        && delta('gems') <= 400;
+        && delta('coins') <= 4000;
     }
 
     function weeklyOk() {
       return changed('weekly_goal_claimed')
         && nd('weekly_claim_at', null) == request.time
         && request.time > od('weekly_claim_at', epoch()) + duration.value(6, 'd')
-        && delta('gems') <= 50;
+        && delta('coins') <= 500;
     }
 
     // ── shop: every new item / hero must be paid at (at least) catalog price ──
     // arrayUnion appends, so the NEW entries are the tail of the new array.
     function ci(ni, j) { return j < ni.size() ? itemCoins(ni[j]) : 0; }
-    function gi(ni, j) { return j < ni.size() ? itemGems(ni[j]) : 0; }
     // weekly pick is 25% off: pay at least 75% of the price
     function minPay(v) { return math.floor(v * 0.75); }
 
@@ -116,13 +128,7 @@ service cloud.firestore {
            + minPay(ci(ni, k + 3)) + minPay(ci(ni, k + 4)) + minPay(ci(ni, k + 5))
            + minPay(ci(ni, k + 6));
     }
-    function itemGemsMin(ni, k) {
-      return minPay(gi(ni, k)) + minPay(gi(ni, k + 1)) + minPay(gi(ni, k + 2))
-           + minPay(gi(ni, k + 3)) + minPay(gi(ni, k + 4)) + minPay(gi(ni, k + 5))
-           + minPay(gi(ni, k + 6));
-    }
-
-    function heroGemsMin(nh, k) { return k < nh.size() ? heroGems(nh[k]) : 0; }
+    function heroCoinsMin(nh, k) { return k < nh.size() ? heroCoins(nh[k]) : 0; }
     function heroUnlockedByRank(nh, k) {
       return k >= nh.size()
         || heroStage(nh[k]) == ''
@@ -136,9 +142,7 @@ service cloud.firestore {
         && nd('owned_heroes', []).size() <= od('owned_heroes', []).size() + 1
         && od('coins', 0) - nd('coins', 0)
              >= itemCoinsMin(nd('owned_items', []), od('owned_items', []).size())
-        && od('gems', 0) - nd('gems', 0)
-             >= itemGemsMin(nd('owned_items', []), od('owned_items', []).size())
-                + heroGemsMin(nd('owned_heroes', []), od('owned_heroes', []).size())
+                + heroCoinsMin(nd('owned_heroes', []), od('owned_heroes', []).size())
         && heroUnlockedByRank(nd('owned_heroes', []), od('owned_heroes', []).size());
     }
 
@@ -156,19 +160,26 @@ service cloud.firestore {
              >= duration.value(6, 'd');
     }
 
+    // one-time cash-in of an old crystal balance: 1 crystal = 10 coins
+    function migrateOk() {
+      return od('gems', 0) > 0 && nd('gems', 0) == 0
+        && delta('coins') >= 0 && delta('coins') <= od('gems', 0) * 10;
+    }
+
     // ── put it together ──
     function economyOk(uid) {
       return
         checkInOk() &&
-        // money can always be SPENT, but only a run / duel / claim adds it
-        (delta('coins') <= 0 || runOk(uid))
-        && (delta('gems') <= 0 || runOk(uid) || duelWinOk(uid)
-            || streakOk() || weeklyOk())
+        // coins can always be SPENT, but only a run / duel / claim adds them
+        (delta('coins') <= 0 || runOk(uid) || duelWinOk(uid)
+            || streakOk() || weeklyOk() || migrateOk())
+        // crystals no longer exist: the old balance can only be cashed in
+        && delta('gems') <= 0
         && (delta('xp') <= 0 || runOk(uid))
         && (delta('total_km') <= 0 || runOk(uid))
         && (delta('total_sessions') <= 0 || runOk(uid))
         && (delta('loot_chests') <= 0 || runOk(uid))
-        && nd('coins', 0) >= 0 && nd('gems', 0) >= 0
+        && nd('coins', 0) >= 0
         // nobody lowers their own totals to dodge checks
         && delta('xp') >= 0 && delta('total_km') >= 0 && delta('total_sessions') >= 0
         && stageOk(uid)
@@ -187,13 +198,13 @@ service cloud.firestore {
         && nd('owned_heroes', []).hasAll(od('owned_heroes', []))
         && nd('owned_heroes', []).size() <= od('owned_heroes', []).size() + 1
         && (nd('owned_heroes', []).size() == od('owned_heroes', []).size()
-            || (heroGems(nd('owned_heroes', [])[od('owned_heroes', []).size()]) == 0
+            || (heroCoins(nd('owned_heroes', [])[od('owned_heroes', []).size()]) == 0
                 && heroUnlockedByRank(nd('owned_heroes', []), od('owned_heroes', []).size())));
     }
 
     // a new account starts with the sign-up gift only
     function freshAccount() {
-      return nd('coins', 0) <= 100 && nd('gems', 0) <= 10
+      return nd('coins', 0) <= 100 && nd('gems', 0) == 0
         && nd('xp', 0) == 0 && nd('total_km', 0) == 0
         && nd('total_sessions', 0) == 0
         && nd('owned_items', []).size() <= 12;
@@ -293,7 +304,7 @@ service cloud.firestore {
         && request.resource.data.from == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.reward is int
-        && request.resource.data.reward <= 100
+        && request.resource.data.reward <= 1000
         && request.resource.data.participants.size() == 2
         && request.auth.uid in request.resource.data.participants;
       allow update: if signedIn()

@@ -82,7 +82,7 @@ class _WeeklyGoalCardState extends State<WeeklyGoalCard> {
         txn.update(_ref, {
           'weekly_goal_claimed': key,
           'weekly_claim_at': FieldValue.serverTimestamp(), // rules: 1 per week
-          'gems': FieldValue.increment(WeeklyGoal.rewardGems),
+          'coins': FieldValue.increment(WeeklyGoal.rewardCoins),
           'weekly_goal_log.$key.achieved_km': double.parse(g.weekKm.toStringAsFixed(2)),
         });
       });
@@ -92,7 +92,7 @@ class _WeeklyGoalCardState extends State<WeeklyGoalCard> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(
-              content: Text('🎯 Weekly goal smashed! +${WeeklyGoal.rewardGems} 💎')));
+              content: Text('🎯 Weekly goal smashed! +${WeeklyGoal.rewardCoins} 🪙')));
       }
     } catch (_) {
       await _load();
@@ -168,7 +168,7 @@ class _WeeklyGoalCardState extends State<WeeklyGoalCard> {
                     child: SizedBox(
                       width: double.infinity,
                       child: Center(
-                        child: BlockText('CLAIM \u{1F48E}${WeeklyGoal.rewardGems}',
+                        child: BlockText('CLAIM \u{1FA99}${WeeklyGoal.rewardCoins}',
                             size: 14, stroke: 3.5),
                       ),
                     ),

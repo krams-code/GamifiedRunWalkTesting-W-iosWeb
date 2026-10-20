@@ -16,7 +16,6 @@ import '../../widgets/unlock_sheet.dart';
 import '../../widgets/weight_history_card.dart';
 import '../../widgets/global_top_bar.dart' show confirmLogout;
 import '../../widgets/settings_sheet.dart';
-import '../character/character_creation_screen.dart';
 import '../character/hero_picker_screen.dart';
 import '../../widgets/emoji_icons.dart';
 import '../../widgets/lottie_fx.dart';
@@ -119,13 +118,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) _load();
   }
 
-  Future<void> _editHero() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CharacterCreationScreen(isEditMode: true)),
-    );
-    if (mounted) _load();
-  }
-
   // ───────────────────────── build ─────────────────────────
 
   @override
@@ -133,7 +125,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_loading) {
       return const Scaffold(
         backgroundColor: Rb.bg,
-        body: const LoadingRunner(),
+        body: LoadingRunner(),
       );
     }
 
@@ -247,7 +239,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(21),
           child: GestureDetector(
-            onTap: _editHero,
+            onTap: _checkIn,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -314,20 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 Positioned(
                   right: 10,
-                  top: 10,
-                  child: PressBlock(
-                    color: Rb.blue,
-                    edge: Rb.blueEdge,
-                    depth: 4,
-                    radius: 10,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    onTap: _editHero,
-                    child: const BlockText('✏️ EDIT HERO', size: 11, stroke: 3),
-                  ),
-                ),
-                Positioned(
-                  right: 10,
-                  top: 90,
+                  top: 50,
                   child: PressBlock(
                     color: Rb.orange,
                     edge: Rb.orangeEdge,
@@ -335,12 +314,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     radius: 10,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     onTap: _pickHero,
-                    child: const BlockText('🦸 CHOOSE HERO', size: 11, stroke: 3),
+                    child: const BlockText('🎭 COSTUMES', size: 11, stroke: 3),
                   ),
                 ),
                 Positioned(
                   right: 10,
-                  top: 50,
+                  top: 10,
                   child: PressBlock(
                     color: Rb.green,
                     edge: Rb.greenEdge,
@@ -406,7 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ── currency ─────────────────────────────────────────────────────────
   Widget _currencyRow() {
-    // Single currency: Mana Crystals fills the whole slot.
+    // Single currency: Coins fills the whole slot.
     return Block(
       color: const Color(0xFF2EC4FF),
       edge: const Color(0xFF0A6C99),
@@ -416,15 +395,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const EmojiText('💎', style: TextStyle(fontSize: 26)),
+          const EmojiText('🪙', style: TextStyle(fontSize: 26)),
           const SizedBox(width: 10),
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: BlockText(_fmt((_user['gems'] as num?)?.toInt() ?? 0),
+            child: BlockText(_fmt((_user['coins'] as num?)?.toInt() ?? 0),
                 size: 22, stroke: 4.5),
           ),
           const SizedBox(width: 10),
-          const BlockText('MANA CRYSTALS', size: 11, stroke: 3),
+          const BlockText('COINS', size: 11, stroke: 3),
         ],
       ),
     );

@@ -85,7 +85,7 @@ class GhostResult {
     required this.paceDelta,
   });
 
-  static const int winGems = 15;
+  static const int winCoins = 150;
 
   /// Null when the run was too short to judge.
   static GhostResult? judge(GhostRun? ghost, double km, int seconds) {

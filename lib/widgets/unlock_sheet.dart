@@ -60,7 +60,7 @@ String? unlockTip(UnlockRule r, HeroProgress p) {
   }
   final s = r.stageId;
   if (s != null && !p.cleared(s)) {
-    return 'Open RUN, then STAGE MODE, and finish the rank before its clock runs out.';
+    return 'Open RUN, then GOAL MODE, and finish the rank before its clock runs out.';
   }
   if (r.stars > 0 && p.totalStars < r.stars) {
     return 'Finish ranks with time to spare to earn up to 3 ⭐ each.';
@@ -71,7 +71,7 @@ String? unlockTip(UnlockRule r, HeroProgress p) {
 /// "HOW TO UNLOCK" pop-up: shows the picture, the rule with the player's
 /// progress, and (when it can be bought) the price.
 ///
-/// [priceLabel] example: "100 \u{1F48E}". When the goals are done and it is
+/// [priceLabel] example: "100 \u{1FA99}". When the goals are done and it is
 /// for sale, pass [onBuy] to show a BUY button.
 Future<void> showUnlockSheet(
   BuildContext context, {
@@ -80,7 +80,7 @@ Future<void> showUnlockSheet(
   required Widget art,
   required List<UnlockReq> reqs,
   String? priceLabel,
-  String? youHave, // "You have 40 \u{1F48E}"
+  String? youHave, // "You have 40 \u{1FA99}"
   String? tip,
   bool canBuy = false,
   VoidCallback? onBuy,
@@ -214,7 +214,7 @@ Future<void> showModeLockedSheet(
       ? null
       : need.isTrial
           ? 'Finish that distance inside its time goal to open this one.'
-          : 'Open RUN, then STAGE MODE, and clear ${need.name} to open this.';
+          : 'Open RUN, then GOAL MODE, and clear ${need.name} to open this.';
   return showUnlockSheet(
     context,
     title: m.name,
@@ -491,41 +491,30 @@ Future<void> showConfirmSheet(
 }
 
 /// Same look as the unlock pop-up, for "you can't afford this yet".
-/// Shows how far the player is and where crystals / coins come from.
+/// Shows how far the player is and where coins come from.
 Future<void> showNeedMoreSheet(
   BuildContext context, {
   required String what,
-  int needGems = 0,
-  int haveGems = 0,
-  int needCoins = 0,
-  int haveCoins = 0,
+  required int needCoins,
+  required int haveCoins,
   Widget? art,
 }) {
   final reqs = <UnlockReq>[
-    if (needGems > 0)
-      UnlockReq('Get $needGems \u{1F48E} crystals',
-          progress: '$haveGems / $needGems',
-          fraction: (haveGems / needGems).clamp(0.0, 1.0),
-          done: haveGems >= needGems),
     if (needCoins > 0)
       UnlockReq('Get $needCoins \u{1FA99} coins',
           progress: '$haveCoins / $needCoins',
           fraction: (haveCoins / needCoins).clamp(0.0, 1.0),
           done: haveCoins >= needCoins),
   ];
-  final gemsShort = needGems > haveGems;
   return showUnlockSheet(
     context,
     title: what,
-    kind: gemsShort ? 'NOT ENOUGH CRYSTALS' : 'NOT ENOUGH COINS',
+    kind: 'NOT ENOUGH COINS',
     art: art ??
-        Center(
-            child: Text(gemsShort ? '\u{1F48E}' : '\u{1FA99}',
-                style: const TextStyle(fontSize: 54))),
+        const Center(child: Text('\u{1FA99}', style: TextStyle(fontSize: 54))),
     reqs: reqs,
-    tip: gemsShort
-        ? 'Crystals come from daily quests, first clears and stars on ranks, streak rewards and the weekly goal.'
-        : 'Coins come from every run. The more km, the more coins!',
+    tip: 'Coins come from every run, daily quests, rank clears and stars, '
+        'streak rewards and the weekly goal. The more you run, the more you earn!',
     accent: Rb.orange,
     accentEdge: Rb.orangeEdge,
   );

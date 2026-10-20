@@ -70,8 +70,8 @@ final List<_Step> _steps = [
     target: TutorialKeys.rewards,
     title: 'EARNING REWARDS',
     text: 'Congratulations on completing your first run, Hero! '
-        'Look at that! Your physical effort earned you raw EXP and Mana '
-        'Crystals. Let\'s see where that goes!',
+        'Look at that! Your physical effort earned you raw EXP and '
+        'Coins. Let\'s see where that goes!',
     pose: 'coach_1.png',
     closeSummaryOnNext: true,
     radius: 16,
@@ -136,7 +136,7 @@ final List<_Step> _steps = [
     number: 7,
     kind: _Kind.info,
     title: 'THE SHOP',
-    text: 'Use the crystals you earn from running to buy fresh hairstyles, '
+    text: 'Use the coins you earn from running to buy fresh hairstyles, '
         'expressions, and clothing sets! Remember, elite legendary gear '
         'requires you to break real-life kilometer milestones before you '
         'can buy them! Good luck on your journey, Hero!',

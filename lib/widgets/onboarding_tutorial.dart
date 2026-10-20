@@ -44,9 +44,9 @@ final List<_TutorialStep> _steps = [
   _TutorialStep(
     TutorialKeys.playStage,
     'THREE WAYS TO PLAY',
-    'Tap PLAY STAGE to pick a mode. STAGE MODE is the main campaign: reach a '
+    'Tap CHOOSE RUN to pick a mode. GOAL MODE is the main campaign: reach a '
         'target distance before the clock runs out. INTERVAL RUN alternates 1 min '
-        'FAST and 1 min EASY for 6 rounds. ENDLESS RUN is the relaxed one: no '
+        'FAST and 1 min EASY for 6 rounds. FREE RUN is the relaxed one: no '
         'target, no clock, just move and earn per kilometer!',
     'coach_3.png',
     radius: 22,
@@ -65,16 +65,27 @@ final List<_TutorialStep> _steps = [
   _TutorialStep(
     TutorialKeys.playStage,
     'RUN TO UNLOCK',
-    'Every rank starts locked except NOVICE. Clear NOVICE to unlock '
-        'VANGUARD, INTERVAL RUN, ENDLESS RUN and DISTANCE TRIALS (2 km up to a marathon). Clear VANGUARD to unlock SLAYER. You '
+    'Every rank starts locked except BEGINNER. Clear BEGINNER to unlock '
+        'INTERMEDIATE, INTERVAL RUN, FREE RUN and DISTANCE TRIALS (2 km up to a marathon). Clear INTERMEDIATE to unlock ADVANCED. You '
         'earn your way up, one run at a time!',
     'coach_1.png',
     radius: 22,
   ),
   _TutorialStep(
+    TutorialKeys.navShop,
+    'HOW COINS WORK',
+    'Coins \u{1FA99} are the only currency. Every run earns XP and coins: the '
+        'farther and faster you go, the more you get. Clearing levels, '
+        'daily quests and streaks give bonus coins. Spend them in the SHOP '
+        'on gear and new costumes. There is a daily coin limit, so run a '
+        'little every day!',
+    'coach_2.png',
+    radius: 14,
+  ),
+  _TutorialStep(
     TutorialKeys.runButton,
     'CHOOSE YOUR FIRST MODE',
-    'Time to pick your first mode! Only NOVICE RANK is open right now, so '
+    'Time to pick your first mode! Only BEGINNER LEVEL is open right now, so '
         'tap it on the next screen and start running. To finish a run '
         'later, press and hold END SESSION.',
     'coach_1.png',
@@ -424,7 +435,7 @@ class SpotlightPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final full = Offset.zero & size;
-    final dimPaint = Paint()..color = Colors.black.withOpacity(dim);
+    final dimPaint = Paint()..color = Colors.black.withValues(alpha: dim);
 
     if (!show) {
       canvas.drawRect(full, dimPaint);

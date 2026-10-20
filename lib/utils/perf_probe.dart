@@ -1,4 +1,3 @@
-import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -41,7 +40,7 @@ class PerfProbe {
     final now = DateTime.now();
     if (now.difference(_windowStart).inSeconds >= 5) {
       if (_frames > 0 && _slow > 0) {
-        debugPrint('[perf] ${_frames} frames  avg ${(_sumMs / _frames).toStringAsFixed(1)} ms'
+        debugPrint('[perf] $_frames frames  avg ${(_sumMs / _frames).toStringAsFixed(1)} ms'
             '  slow(>16ms) $_slow  jank(>33ms) $_jank  worst ${_worstMs.toStringAsFixed(0)} ms');
       }
       _frames = _slow = _jank = 0;

@@ -9,6 +9,7 @@ import '../../widgets/block_ui.dart';
 import '../../widgets/pixel_icon.dart';
 import '../../widgets/emoji_icons.dart';
 import '../../widgets/lottie_fx.dart';
+import '../../widgets/route_mini_map.dart';
 
 /// Roblox block-style Activity log.
 class ActivityScreen extends StatefulWidget {
@@ -424,9 +425,60 @@ class _ActivityScreenState extends State<ActivityScreen> {
           mini('KM', s.distanceKm.toStringAsFixed(2)),
           mini('TIME', s.formattedDuration),
           mini('PACE', s.formattedPace),
-          mini('MAX', '${s.maxSpeedKmh.toStringAsFixed(1)}'),
+          mini('MAX', s.maxSpeedKmh.toStringAsFixed(1)),
         ]),
+        if (RouteMiniMap.hasRoute(s.routePoints)) ...[
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => _openRoute(s),
+            child: Stack(children: [
+              RouteMiniMap(points: s.routePoints, height: 90),
+              const Positioned(
+                right: 8,
+                bottom: 4,
+                child: BlockText('TAP TO ENLARGE',
+                    size: 8, stroke: 2, color: Color(0xFFB8BDC4)),
+              ),
+            ]),
+          ),
+        ],
       ]),
+    );
+  }
+
+  /// Big route view for one run.
+  void _openRoute(ActivitySession s) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Block(
+            color: Rb.panel,
+            edge: Rb.panelEdge,
+            depth: 6,
+            padding: const EdgeInsets.all(12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              BlockText(
+                  '${s.type.emoji} ${DateFormat('MMM d, h:mm a').format(s.startTime).toUpperCase()}',
+                  size: 13,
+                  stroke: 3.5),
+              const SizedBox(height: 4),
+              BlockText(
+                  '${s.distanceKm.toStringAsFixed(2)} KM  \u2022  ${s.formattedDuration}  \u2022  ${s.formattedPace}/KM',
+                  size: 11,
+                  stroke: 3,
+                  color: const Color(0xFFB8BDC4)),
+              const SizedBox(height: 10),
+              RouteMiniMap(points: s.routePoints, height: 280),
+              const SizedBox(height: 6),
+              const BlockText('\u{1F7E2} START   \u{1F534} FINISH',
+                  size: 10, stroke: 2.5),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 

@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../models/character_profile.dart' show BodyTier, BodyTierExt;
+import '../models/character_profile.dart' show BodyTier;
 import '../models/hero_items.dart';
 import '../models/hero_roster.dart';
 
@@ -261,7 +261,6 @@ class _RigBody extends StatelessWidget {
   final Map<String, String> outfit;
 
   const _RigBody({
-    super.key,
     required this.anim,
     required this.heroId,
     required this.tier,

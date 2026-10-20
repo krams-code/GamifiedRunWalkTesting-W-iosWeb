@@ -9,6 +9,7 @@ import '../services/sound.dart';
 import 'block_ui.dart';
 import 'demo_window.dart';
 import 'pixel_icon.dart';
+import 'unlock_sheet.dart';
 
 // deeper amber than before: white labels stay readable on it
 const _yellow = Color(0xFFF2A100);
@@ -194,6 +195,20 @@ class _WarmUpViewState extends State<WarmUpView>
     _goTimer?.cancel();
     _stepCtrl.stop();
     widget.onSkip();
+  }
+
+  /// Asks before skipping the whole warm-up (it protects the legs).
+  void _askSkip() {
+    if (_done) return;
+    showConfirmSheet(
+      context,
+      title: 'SKIP WARM-UP?',
+      message: 'Are you sure you want to skip warm up? A few minutes of '
+          'warming up helps prevent cramps and injuries.',
+      art: const Text('\u{1F525}', style: TextStyle(fontSize: 56)),
+      confirmLabel: 'YES, SKIP',
+      onConfirm: _skip,
+    );
   }
 
   void _back() {
@@ -387,7 +402,7 @@ class _WarmUpViewState extends State<WarmUpView>
           ),
         ),
         const SizedBox(height: 18),
-        _SlateButton(label: 'SKIP', onTap: _skip),
+        _SlateButton(label: 'SKIP', onTap: _askSkip),
         const SizedBox(height: 10),
         const Text(
           'You can skip the warm-up. There is no XP penalty for skipping.',
@@ -561,7 +576,7 @@ class _WarmUpViewState extends State<WarmUpView>
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _SlateButton(label: 'SKIP WARM-UP', onTap: _skip),
+              child: _SlateButton(label: 'SKIP WARM-UP', onTap: _askSkip),
             ),
           ],
         ),

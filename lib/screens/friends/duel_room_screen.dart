@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart' hide ActivityType;
 
 import '../../models/activity_model.dart';
 import '../../services/friends_service.dart';
+import '../../services/run_saver.dart';
 import '../../utils/rewards.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/hero_bust.dart';
@@ -121,10 +122,12 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
     try {
       final a = await FriendsService.user(_me).get();
       final b = await FriendsService.user(_otherUid).get();
-      if (mounted) setState(() {
-        _meData = a.data();
-        _otherData = b.data();
-      });
+      if (mounted) {
+        setState(() {
+          _meData = a.data();
+          _otherData = b.data();
+        });
+      }
     } catch (_) {}
   }
 
@@ -372,7 +375,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
                 ),
                 if (won) ...[
                   const SizedBox(height: 10),
-                  BlockText('+\u{1F48E}$_reward', size: 22, stroke: 5, color: Rb.neon),
+                  BlockText('+\u{1FA99}$_reward', size: 22, stroke: 5, color: Rb.neon),
                 ],
                 const SizedBox(height: 16),
                 if (!byDefault || !won)
@@ -487,6 +490,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
             'total_sessions': FieldValue.increment(1),
             'xp': FieldValue.increment(xp),
             'coins': FieldValue.increment(coins),
+            ...RunSaver.coinsTodayFields(snap.data() ?? {}, coins),
             'last_run_id': runId,
             ...FriendsService.weekFields(snap.data() ?? {}, session.distanceKm),
           });
@@ -670,7 +674,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
               depth: 3,
               radius: 10,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              child: BlockText('${_target.toStringAsFixed(0)} KM • \u{1F48E}$_reward',
+              child: BlockText('${_target.toStringAsFixed(0)} KM • \u{1FA99}$_reward',
                   size: 11, stroke: 3, color: Colors.black),
             ),
             if (!_post) ...[
@@ -779,7 +783,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
                 BlockText('• GPS only, no pausing, no timer-only runs', size: 10.5, stroke: 2.5),
                 BlockText('• Fake locations and vehicle speeds do not count',
                     size: 10.5, stroke: 2.5),
-                BlockText('• First to the distance wins the \u{1F48E}', size: 10.5, stroke: 2.5),
+                BlockText('• First to the distance wins the \u{1FA99}', size: 10.5, stroke: 2.5),
               ],
             ),
           ),

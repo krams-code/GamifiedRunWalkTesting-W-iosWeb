@@ -24,7 +24,7 @@ abstract final class Fx {
   /// Loop: spinning coin.
   static const coinSpin = '$_d/coin_spin.json';
 
-  /// One-shot: a crystal pops in with sparkles.
+  /// One-shot: a coin pops in with sparkles.
   static const gemPop = '$_d/gem_pop.json';
 
   /// Loop: a little hero running on the spot (loading / empty states).

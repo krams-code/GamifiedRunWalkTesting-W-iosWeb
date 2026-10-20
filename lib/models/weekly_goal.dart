@@ -12,7 +12,7 @@ class WeeklyGoal {
   static const double minKm = 2.0;
   static const double fixedKm = 5.0;
   static const double growth = 0.10;
-  static const int rewardGems = 50;
+  static const int rewardCoins = 500;
 
   final GoalMode mode;
   final double targetKm;

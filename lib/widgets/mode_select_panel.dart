@@ -8,10 +8,10 @@ import 'unlock_sheet.dart';
 import 'emoji_icons.dart';
 import 'lottie_fx.dart';
 
-/// Roblox-style Mode Selection Overlay, opened by the ▶ PLAY STAGE button.
+/// Roblox-style Mode Selection Overlay, opened by the ▶ CHOOSE RUN button.
 ///
-///   MAIN MENU            ⚔️ STAGE MODE   → difficulty sub-menu
-///                        ♾️ ENDLESS RUN  → starts straight away
+///   MAIN MENU            ⚔️ GOAL MODE   → difficulty sub-menu
+///                        ♾️ FREE RUN  → starts straight away
 ///   DIFFICULTY SUB-MENU  🟢 Novice · 🟡 Vanguard · 🔴 Slayer
 ///
 /// Resolves to the chosen [RunMode], or null if the player closes it.
@@ -19,7 +19,7 @@ import 'lottie_fx.dart';
 /// [records] is the user's `stage_records` map (stars per rank), if loaded.
 ///
 /// [firstRun] = the brand-new-hero version: opens straight on the rank list,
-/// can't be closed, and the only rank that can be picked is NOVICE.
+/// can't be closed, and the only rank that can be picked is BEGINNER.
 Future<RunMode?> showModeSelectPanel(BuildContext context,
     {Map<String, dynamic>? records, Object? seen, bool firstRun = false}) {
   return showGeneralDialog<RunMode>(
@@ -49,7 +49,7 @@ class _ModePanel extends StatefulWidget {
   /// Ranks whose NEW! badge the player has already acted on.
   final Set<String> seen;
 
-  /// Brand-new hero: must pick NOVICE (nothing else is open yet).
+  /// Brand-new hero: must pick BEGINNER (nothing else is open yet).
   final bool firstRun;
   const _ModePanel({this.records, this.seen = const {}, this.firstRun = false});
 
@@ -300,7 +300,7 @@ class _ModePanelState extends State<_ModePanel> {
             children: [
               const FittedBox(
                 fit: BoxFit.scaleDown,
-                child: BlockText('\u2694\uFE0F STAGE MODE', size: 24, stroke: 5.5),
+                child: BlockText('\u2694\uFE0F GOAL MODE', size: 24, stroke: 5.5),
               ),
               const SizedBox(height: 4),
               const BlockText('THE MAIN CAMPAIGN',
@@ -310,7 +310,7 @@ class _ModePanelState extends State<_ModePanel> {
                 '\u{1F3AF} Target distance',
                 '\u23F1 Stage clock',
                 '\u2B50 ${RunMode.totalStars(widget.records)}/${RunMode.maxStars} stars',
-                '\u{1F48E} Up to 2.5x rewards',
+                '\u{1FA99} Up to 2.5x rewards',
               ]),
             ],
           ),
@@ -331,7 +331,7 @@ class _ModePanelState extends State<_ModePanel> {
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: BlockText(
-                    '${RunMode.isUnlocked(kEndless, widget.records) ? '\u267E\uFE0F' : '\u{1F512}'} ENDLESS RUN',
+                    '${RunMode.isUnlocked(kEndless, widget.records) ? '\u267E\uFE0F' : '\u{1F512}'} FREE RUN',
                     size: 24,
                     stroke: 5.5),
               ),
@@ -349,7 +349,7 @@ class _ModePanelState extends State<_ModePanel> {
                 'No target',
                 'No clock',
                 'No interruptions',
-                '+0.2x XP & Crystals per km',
+                '+0.2x XP & Coins per km',
               ]),
             ],
           ),
@@ -388,7 +388,7 @@ class _ModePanelState extends State<_ModePanel> {
                 '6 rounds',
                 '1 min FAST / 1 min EASY',
                 '12 min',
-                '1.3x XP & Crystals',
+                '1.3x XP & Coins',
               ]),
             ],
           ),
@@ -590,7 +590,7 @@ class _ModePanelState extends State<_ModePanel> {
             child: SizedBox(
               width: double.infinity,
               child: BlockText(
-                'Start with NOVICE RANK. Clear it to unlock VANGUARD, SLAYER and ENDLESS RUN!',
+                'Start with BEGINNER LEVEL. Clear it to unlock INTERMEDIATE, ADVANCED and FREE RUN!',
                 size: 11.5,
                 stroke: 3,
                 align: TextAlign.center,
@@ -670,7 +670,7 @@ class _ModePanelState extends State<_ModePanel> {
             ),
           line('\u{1F3AF} Target ${m.targetKm!.toStringAsFixed(1)} KM   \u23F1 ${m.clockMinutes}-minute clock'),
           line('\u{1F5FA} Map: ${m.mapName}'),
-          line('\u{1F48E} Rewards: ${m.rewardLabel}'),
+          line('\u{1FA99} Rewards: ${m.rewardLabel}'),
           if (m.events != EventPlan.none) line('\u26A1 ${m.eventLabel}'),
         ],
       ),

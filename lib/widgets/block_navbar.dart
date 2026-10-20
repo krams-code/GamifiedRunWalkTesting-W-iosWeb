@@ -106,7 +106,7 @@ class BlockNavBar extends StatelessWidget {
                 ),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   slot(_side[0]),
                   slot(_side[1]),

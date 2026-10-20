@@ -201,7 +201,7 @@ class _PlayerCardState extends State<_PlayerCard> {
                           fontSize: 12,
                           fontWeight: FontWeight.w900)),
                   if (hero != null)
-                    Text('Hero: ${hero.name}',
+                    Text(hero.costume ? 'Costume: ${hero.name}' : 'Hero: ${hero.name}',
                         style: const TextStyle(
                             color: Color(0xFF3A4046),
                             fontSize: 12,

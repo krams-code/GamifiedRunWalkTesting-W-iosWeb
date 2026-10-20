@@ -36,7 +36,7 @@ const List<HeroSlot> kSlotDrawOrder = [
 /// HOW IT IS GOT:
 ///  * price 0 + no rule           free starter item
 ///  * price 0 + rule              EARNED: unlocks by itself (level / km / rank / stars)
-///  * coins or gems price         BOUGHT once (rule must also be met, if any)
+///  * coins price                 BOUGHT once (rule must also be met, if any)
 class HeroItem {
   final String id;
   final HeroSlot slot;
@@ -47,7 +47,6 @@ class HeroItem {
   final int rarity;
 
   final int coins;
-  final int gems;
   final UnlockRule rule;
 
   const HeroItem(
@@ -57,20 +56,18 @@ class HeroItem {
     this.emoji, {
     this.rarity = 0,
     this.coins = 0,
-    this.gems = 0,
     this.rule = UnlockRule.none,
   });
 
   /// Pixel-art icon of this item (assets/images/icons/items).
   String get iconPath => 'assets/images/icons/items/item_$id.png';
 
-  bool get isFree => coins == 0 && gems == 0 && rule.isNone;
-  bool get isEarned => coins == 0 && gems == 0 && !rule.isNone;
-  bool get isForSale => coins > 0 || gems > 0;
+  bool get isFree => coins == 0 && rule.isNone;
+  bool get isEarned => coins == 0 && !rule.isNone;
+  bool get isForSale => coins > 0;
 
-  /// "120 \u{1FA99}" / "40 \u{1F48E}" / "FREE" / "EARN".
+  /// "120 \u{1FA99}" / "FREE" / "EARN".
   String get priceLabel {
-    if (gems > 0) return '$gems \u{1F48E}';
     if (coins > 0) return '$coins \u{1FA99}';
     return isFree ? 'FREE' : 'EARN';
   }
@@ -88,7 +85,7 @@ const List<HeroItem> kHeroItems = [
   HeroItem('helm_knight', HeroSlot.head, 'Knight Helm', '\u{1FA96}',
       rarity: 1, rule: UnlockRule(stageId: 'stage_novice')),
   HeroItem('halo', HeroSlot.head, 'Angel Halo', '\u{1F607}',
-      rarity: 2, gems: 40),
+      rarity: 2, coins: 400),
   HeroItem('crown_gold', HeroSlot.head, 'Gold Crown', '\u{1F451}',
       rarity: 3, rule: UnlockRule(stageId: 'stage_slayer')),
 
@@ -108,9 +105,9 @@ const List<HeroItem> kHeroItems = [
   HeroItem('hoodie_orange', HeroSlot.top, 'Orange Hoodie', '\u{1F9E5}',
       rarity: 1, rule: UnlockRule(level: 6)),
   HeroItem('jersey_bolt', HeroSlot.top, 'Bolt Jersey', '⚡',
-      rarity: 1, gems: 20),
+      rarity: 1, coins: 200),
   HeroItem('gi_ninja', HeroSlot.top, 'Ninja Gi', '\u{1F977}',
-      rarity: 2, gems: 35),
+      rarity: 2, coins: 350),
   HeroItem('armor_silver', HeroSlot.top, 'Silver Armor', '\u{1F6E1}',
       rarity: 2, rule: UnlockRule(stageId: 'stage_vanguard')),
   HeroItem('armor_gold', HeroSlot.top, 'Golden Armor', '\u{1F3C6}',
@@ -121,7 +118,7 @@ const List<HeroItem> kHeroItems = [
   HeroItem('pants_track', HeroSlot.bottom, 'Track Pants', '\u{1F456}',
       coins: 120),
   HeroItem('pants_camo', HeroSlot.bottom, 'Camo Pants', '\u{1F332}',
-      rarity: 1, gems: 25),
+      rarity: 1, coins: 250),
   HeroItem('shorts_gold', HeroSlot.bottom, 'Gold Shorts', '\u{1F947}',
       rarity: 2, rule: UnlockRule(km: 25)),
 
@@ -130,9 +127,9 @@ const List<HeroItem> kHeroItems = [
   HeroItem('runners_neon', HeroSlot.shoes, 'Neon Runners', '\u{1F3C3}',
       rarity: 1, rule: UnlockRule(level: 8)),
   HeroItem('boots_gold', HeroSlot.shoes, 'Gold Boots', '\u{1F97E}',
-      rarity: 2, gems: 45),
+      rarity: 2, coins: 450),
   HeroItem('wing_shoes', HeroSlot.shoes, 'Winged Sneakers', '\u{1FABD}',
-      rarity: 2, gems: 60),
+      rarity: 2, coins: 600),
   HeroItem('rocket_boots', HeroSlot.shoes, 'Rocket Boots', '\u{1F680}',
       rarity: 3, rule: UnlockRule(km: 100)),
 
@@ -144,7 +141,7 @@ const List<HeroItem> kHeroItems = [
   HeroItem('wings_bat', HeroSlot.back, 'Bat Wings', '\u{1F987}',
       rarity: 2, rule: UnlockRule(stars: 5)),
   HeroItem('wings_angel', HeroSlot.back, 'Angel Wings', '\u{1FABD}',
-      rarity: 3, gems: 80),
+      rarity: 3, coins: 800),
 
   // ── NECK ──
   HeroItem('scarf_red', HeroSlot.neck, 'Red Scarf', '\u{1F9E3}',

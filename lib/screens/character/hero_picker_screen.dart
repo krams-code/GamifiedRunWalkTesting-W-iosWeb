@@ -82,7 +82,9 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         Navigator.of(context).pop(true);
         return;
       }
-      _snack('${h.name} is now your hero!');
+      _snack(h.costume
+          ? 'You are now wearing the ${h.name} costume!'
+          : '${h.name} is back as your hero!');
     } catch (e) {
       debugPrint('hero save failed: $e');
       _snack(saveErrorText(e));
@@ -98,10 +100,10 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
     try {
       await FirebaseFirestore.instance.runTransaction((txn) async {
         final snap = await txn.get(doc);
-        final gems = (snap.data()?['gems'] as num?)?.toInt() ?? 0;
-        if (gems < h.gemPrice) throw 'gems';
+        final coins = (snap.data()?['coins'] as num?)?.toInt() ?? 0;
+        if (coins < h.coinPrice) throw 'coins';
         txn.update(doc, {
-          'gems': FieldValue.increment(-h.gemPrice),
+          'coins': FieldValue.increment(-h.coinPrice),
           'owned_heroes': FieldValue.arrayUnion([h.id]),
           'hero_id': h.id,
         });
@@ -109,7 +111,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
       _snack('\u{1F389} ${h.name} unlocked!');
     } catch (e) {
       debugPrint('hero buy failed: $e');
-      _snack(e == 'gems' ? 'Not enough \u{1F48E} crystals.' : saveErrorText(e, 'Purchase failed. Try again.'));
+      _snack(e == 'coins' ? 'Not enough \u{1FA99} coins.' : saveErrorText(e, 'Purchase failed. Try again.'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -171,7 +173,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
             ],
             Expanded(
               child: BlockText(
-                widget.firstTime ? 'CHOOSE YOUR HERO' : 'YOUR HEROES',
+                widget.firstTime ? 'CHOOSE YOUR COSTUME' : 'YOUR COSTUMES',
                 size: 20,
                 stroke: 4,
               ),
@@ -183,14 +185,14 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
                 depth: 3,
                 radius: 10,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                child: BlockText('${prog.gems} \u{1F48E}', size: 13, stroke: 3),
+                child: BlockText('${prog.coins} \u{1FA99}', size: 13, stroke: 3),
               ),
           ],
         ),
         if (widget.firstTime) ...[
           const SizedBox(height: 6),
           const Text(
-            'Pick the hero who will run with you. More heroes unlock as you play, and you can switch any time.',
+            'Pick the look that runs with you. SPROUT is the main hero you can fully customize with shop gear; the other costumes are ready-made looks. More unlock as you play, and you can switch any time.',
             style: TextStyle(color: Color(0xFFD0D5DB), fontSize: 13),
           ),
         ],
@@ -270,7 +272,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
     }
     showConfirmSheet(
       context,
-      title: 'CHANGE HERO?',
+      title: 'CHANGE COSTUME?',
       message: 'Switch from ${old.name} to ${h.name}? '
           '${h.costume && !old.costume ? '${h.name} wears its own outfit, so your shop gear stays saved for SPROUT. ' : ''}'
           'You can switch back any time.',
@@ -286,7 +288,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
     showConfirmSheet(
       context,
       title: 'BUY ${h.name}?',
-      message: 'Spend ${h.gemPrice} \u{1F48E} and switch your hero '
+      message: 'Spend ${h.coinPrice} \u{1FA99} and switch your look '
           '${old == null ? '' : 'from ${old.name} '}to ${h.name}?',
       art: HeroStill(heroId: h.id, tier: tier),
       confirmLabel: 'YES, BUY',
@@ -295,28 +297,28 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
   }
 
   void _showHow(HeroDef h, HeroProgress prog, BodyTier tier, [String? chosen]) {
-    final price = h.gemPrice > 0 ? '${h.gemPrice} \u{1F48E}' : null;
+    final price = h.coinPrice > 0 ? '${h.coinPrice} \u{1FA99}' : null;
     final goalsDone = h.rule.met(prog);
     showUnlockSheet(
       context,
       title: h.name,
-      kind: '${h.rarityLabel} HERO',
+      kind: h.id == kDefaultHeroId ? 'MAIN HERO' : '${h.rarityLabel} COSTUME',
       art: HeroStill(heroId: h.id, tier: tier),
       reqs: [
         ...unlockReqs(h.rule, prog),
         if (price != null)
-          UnlockReq('Get ${h.gemPrice} \u{1F48E} crystals',
-              progress: '${prog.gems} / ${h.gemPrice}',
-              fraction: (prog.gems / h.gemPrice).clamp(0.0, 1.0),
-              done: prog.gems >= h.gemPrice),
+          UnlockReq('Get ${h.coinPrice} \u{1FA99} coins',
+              progress: '${prog.coins} / ${h.coinPrice}',
+              fraction: (prog.coins / h.coinPrice).clamp(0.0, 1.0),
+              done: prog.coins >= h.coinPrice),
       ],
       priceLabel: price,
-      youHave: price == null ? null : 'You have ${prog.gems} \u{1F48E}',
+      youHave: price == null ? null : 'You have ${prog.coins} \u{1FA99}',
       tip: unlockTip(h.rule, prog) ??
-          (price != null && prog.gems < h.gemPrice
-              ? 'Crystals come from daily quests, first rank clears and stars.'
+          (price != null && prog.coins < h.coinPrice
+              ? 'Coins come from daily quests, first rank clears and stars.'
               : null),
-      canBuy: !widget.firstTime && goalsDone && prog.gems >= h.gemPrice && h.gemPrice > 0,
+      canBuy: !widget.firstTime && goalsDone && prog.coins >= h.coinPrice && h.coinPrice > 0,
       onBuy: () => _confirmBuy(h, chosen, tier),
       accent: h.color,
       accentEdge: h.edge,
@@ -329,7 +331,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
     final selected = chosen == h.id;
     final hint = heroLockHint(h, prog);
     final canBuy = !open && heroCanBuy(h, prog) && !widget.firstTime;
-    final affordable = prog.gems >= h.gemPrice;
+    final affordable = prog.coins >= h.coinPrice;
 
     final figure = SizedBox(
       width: 110,
@@ -370,7 +372,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
         depth: 3,
         radius: 10,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: BlockText('BUY ${h.gemPrice} \u{1F48E}', size: 12, stroke: 3),
+        child: BlockText('BUY ${h.coinPrice} \u{1FA99}', size: 12, stroke: 3),
       );
       onTap = _saving ? null : (affordable ? () => _confirmBuy(h, chosen, tier) : () => _showHow(h, prog, tier, chosen));
     } else {
@@ -405,9 +407,9 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
                     style: const TextStyle(
                         color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
                 if (h.starter)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: Text('STARTER HERO',
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(h.id == kDefaultHeroId ? 'MAIN HERO \u2022 CUSTOMIZABLE' : 'STARTER COSTUME',
                         style: TextStyle(
                             color: Color(0xFFFFE9A8),
                             fontSize: 11,

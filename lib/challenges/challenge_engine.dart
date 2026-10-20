@@ -38,7 +38,7 @@ class ChallengeConfig {
   final double sprintTargetMeters;
   final int sprintSeconds;
   final int sprintBonusXp;
-  final int sprintBonusGems; // "Mana Crystals" (the `gems` field)
+  final int sprintBonusCoins; // bonus coins
   final double sprintChancePerSecond; // random trigger once eligible
   final int sprintMaxPerRun;
 
@@ -61,7 +61,7 @@ class ChallengeConfig {
     this.sprintTargetMeters = 300,
     this.sprintSeconds = 20,
     this.sprintBonusXp = 50,
-    this.sprintBonusGems = 5,
+    this.sprintBonusCoins = 50,
     this.sprintChancePerSecond = 1 / 90, // ~90 s on average after minute 5
     this.sprintMaxPerRun = 1,
     this.paceTriggerKm = 2.0,
@@ -80,7 +80,7 @@ class ChallengeRecord {
   final ChallengeKind kind;
   final bool success;
   final int bonusXp;
-  final int bonusGems;
+  final int bonusCoins;
   final bool lootChest;
   final int atElapsedSeconds;
 
@@ -88,7 +88,7 @@ class ChallengeRecord {
     required this.kind,
     required this.success,
     required this.bonusXp,
-    required this.bonusGems,
+    required this.bonusCoins,
     required this.lootChest,
     required this.atElapsedSeconds,
   });
@@ -97,7 +97,7 @@ class ChallengeRecord {
         'kind': kind.name,
         'success': success,
         'bonusXp': bonusXp,
-        'bonusGems': bonusGems,
+        'bonusCoins': bonusCoins,
         'lootChest': lootChest,
         'atSeconds': atElapsedSeconds,
       };
@@ -157,7 +157,7 @@ class ChallengeEngine extends ChangeNotifier {
 
   List<ChallengeRecord> get records => List.unmodifiable(_records);
   int get bonusXp => _records.fold(0, (s, r) => s + r.bonusXp);
-  int get bonusGems => _records.fold(0, (s, r) => s + r.bonusGems);
+  int get bonusCoins => _records.fold(0, (s, r) => s + r.bonusCoins);
   int get lootChests => _records.where((r) => r.lootChest).length;
 
   int get _limitSeconds => _kind == ChallengeKind.paceKeeper
@@ -362,8 +362,8 @@ class ChallengeEngine extends ChangeNotifier {
       bonusXp: success && kind == ChallengeKind.sprintBlitz
           ? config.sprintBonusXp
           : 0,
-      bonusGems: success && kind == ChallengeKind.sprintBlitz
-          ? config.sprintBonusGems
+      bonusCoins: success && kind == ChallengeKind.sprintBlitz
+          ? config.sprintBonusCoins
           : 0,
       lootChest: success && kind == ChallengeKind.paceKeeper,
       atElapsedSeconds: _nowElapsed,

@@ -27,7 +27,7 @@ class RunPayload {
   final Map<String, dynamic>? ghost;
   final int xp;
   final int coins;
-  final int gems; // challenge + ghost crystals
+  final int bonusCoins; // challenge + ghost bonus coins
   final int lootChests;
   final int elapsedSeconds;
 
@@ -46,7 +46,7 @@ class RunPayload {
     required this.ghost,
     required this.xp,
     required this.coins,
-    required this.gems,
+    required this.bonusCoins,
     required this.lootChests,
     required this.elapsedSeconds,
     this.interval,
@@ -64,7 +64,7 @@ class RunPayload {
         'ghost': ghost,
         'xp': xp,
         'coins': coins,
-        'gems': gems,
+        'bonusCoins': bonusCoins,
         'lootChests': lootChests,
         'elapsedSeconds': elapsedSeconds,
         'interval': interval,
@@ -84,7 +84,9 @@ class RunPayload {
             : Map<String, dynamic>.from(j['ghost'] as Map),
         xp: (j['xp'] as num?)?.toInt() ?? 0,
         coins: (j['coins'] as num?)?.toInt() ?? 0,
-        gems: (j['gems'] as num?)?.toInt() ?? 0,
+        // old queued runs stored crystals (1 crystal = 10 coins)
+        bonusCoins: (j['bonusCoins'] as num?)?.toInt() ??
+            (((j['gems'] as num?)?.toInt() ?? 0) * 10),
         lootChests: (j['lootChests'] as num?)?.toInt() ?? 0,
         elapsedSeconds: (j['elapsedSeconds'] as num?)?.toInt() ?? 0,
         interval: j['interval'] == null
@@ -97,7 +99,7 @@ class RunPayload {
 class RunSaveResult {
   final List<DailyQuest> completedQuests;
   final int stars;
-  final int bonusGems;
+  final int bonusCoins;
   final bool firstClear;
   final RunMode? unlockedRank;
 
@@ -110,7 +112,7 @@ class RunSaveResult {
   const RunSaveResult({
     this.completedQuests = const [],
     this.stars = 0,
-    this.bonusGems = 0,
+    this.bonusCoins = 0,
     this.firstClear = false,
     this.unlockedRank,
     this.duplicate = false,
@@ -129,6 +131,21 @@ abstract final class RunSaver {
     final n = DateTime.now();
     return '${n.year}-${n.month.toString().padLeft(2, '0')}-'
         '${n.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Day number used by the daily coin cap (Manila time, UTC+8). The security
+  /// rules compute the same number from the server clock.
+  static int coinDay() =>
+      (DateTime.now().millisecondsSinceEpoch + 28800000) ~/ 86400000;
+
+  /// `coins_today` bookkeeping for the daily coin cap, to merge into the
+  /// user update that adds [addCoins].
+  static Map<String, dynamic> coinsTodayFields(
+      Map<String, dynamic> data, int addCoins) {
+    final day = coinDay();
+    final same = (data['coins_today_day'] as num?)?.toInt() == day;
+    final before = same ? ((data['coins_today'] as num?)?.toInt() ?? 0) : 0;
+    return {'coins_today': before + addCoins, 'coins_today_day': day};
   }
 
   static Future<RunSaveResult> save(RunPayload p) async {
@@ -166,14 +183,14 @@ abstract final class RunSaver {
       }
       dailyKm += km;
 
-      var crystals = 0;
+      var coins = 0; // quest + stage bonus coins
       final done = <DailyQuest>[];
       for (final q in kDailyQuests) {
         if (claimed[q.id] == true) continue;
         if (q.beforeHour != null && startHour >= q.beforeHour!) continue;
         if (dailyKm >= q.thresholdKm) {
           claimed[q.id] = true;
-          crystals += q.crystalReward;
+          coins += q.coinReward;
           done.add(q);
         }
       }
@@ -193,7 +210,7 @@ abstract final class RunSaver {
         stars = mode.starsFor(p.elapsedSeconds);
         first = oldStars == 0;
         final newStars = stars > oldStars ? stars - oldStars : 0;
-        bonus = (first ? mode.firstClearGems : 0) + newStars * RunMode.starGems;
+        bonus = (first ? mode.firstClearCoins : 0) + newStars * RunMode.starCoins;
         all[mode.id] = {
           'stars': math.max(stars, oldStars),
           'best_secs': oldBest > 0
@@ -202,7 +219,7 @@ abstract final class RunSaver {
           'clears': oldClears + 1,
         };
         records = all;
-        crystals += bonus;
+        coins += bonus;
         if (first) {
           // a rank opens the next rank; a trial opens the next time goal
           final pool = mode.isTrial ? kTrialModes : kStageModes;
@@ -237,7 +254,7 @@ abstract final class RunSaver {
         if (p.outcome != null) 'stage_result': p.outcome,
       });
 
-      final totalGems = p.gems + crystals;
+      final extraCoins = p.bonusCoins + coins;
       txn.update(userRef, {
         'total_km': FieldValue.increment(km),
         'total_sessions': FieldValue.increment(1),
@@ -245,8 +262,8 @@ abstract final class RunSaver {
         // reward (rewards can never exceed what that record shows).
         'last_run_id': p.id,
         'xp': FieldValue.increment(p.xp),
-        'coins': FieldValue.increment(p.coins),
-        if (totalGems > 0) 'gems': FieldValue.increment(totalGems),
+        'coins': FieldValue.increment(p.coins + extraCoins),
+        ...coinsTodayFields(data, p.coins + extraCoins),
         if (p.lootChests > 0) 'loot_chests': FieldValue.increment(p.lootChests),
         'daily_progress_km': dailyKm,
         'daily_progress_date': today,
@@ -262,7 +279,7 @@ abstract final class RunSaver {
       result = RunSaveResult(
         completedQuests: done,
         stars: stars,
-        bonusGems: bonus,
+        bonusCoins: bonus,
         firstClear: first,
         unlockedRank: opened,
         intervalNewBest: newBest,

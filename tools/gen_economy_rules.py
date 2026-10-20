@@ -11,14 +11,14 @@ stage targets from lib/models/run_mode.dart, so after changing a price or a
 rank/trial, run it again and re-publish.
 
 WHAT THE RULES ENFORCE (client-side cheating, e.g. editing coins in DevTools):
-  * coins / gems / xp / total_km / stage_records can only go UP together with
+  * coins / xp / total_km / stage_records can only go UP together with
     a run record (users/{uid}/activities/{id}) written in the SAME transaction,
     and the amounts may not exceed what that record shows.
   * a run record must be humanly possible (<= 25 km/h, reward <= formula).
   * one run per 30 s.
   * buying an item/hero must pay at least its catalog price (weekly -25% ok).
   * duel prizes only for the real winner of a finished challenge.
-  * streak / weekly-goal gems: 1 claim per 12 h / 6 days.
+  * streak / weekly-goal coins: 1 claim per 12 h / 6 days.
 NOT covered (needs a server / Cloud Functions): fake GPS, colluding duel
 partners, rule-locked items that are also priced.
 """
@@ -52,9 +52,7 @@ for blk in calls(body, 'HeroItem'):
     if not m:
         continue
     coins = re.search(r'\bcoins:\s*(\d+)', blk)
-    gems = re.search(r'\bgems:\s*(\d+)', blk)
-    items[m.group(1)] = (int(coins.group(1)) if coins else 0,
-                         int(gems.group(1)) if gems else 0)
+    items[m.group(1)] = int(coins.group(1)) if coins else 0
 
 # free starter ids every hero gets at sign-up (StarterPack in outfit_catalog.dart)
 oc = (LIB / 'models/outfit_catalog.dart').read_text()
@@ -68,7 +66,7 @@ if blk:
         if q not in starter_ids:
             starter_ids.append(q)
 for sid in starter_ids:
-    items.setdefault(sid, (0, 0))
+    items.setdefault(sid, 0)
 
 # ── heroes ───────────────────────────────────────────────────────────────
 heroes = {}
@@ -80,7 +78,7 @@ for blk in calls(body, 'HeroDef'):
     if not m:
         continue
     hid = m.group(1)
-    g = re.search(r'\bgemPrice:\s*(\d+)', blk)
+    g = re.search(r'\bcoinPrice:\s*(\d+)', blk)
     heroes[hid] = int(g.group(1)) if g else 0
     st = re.search(r"stageId:\s*'(\w+)'", blk)
     if st:
@@ -107,8 +105,7 @@ def num(v):
 def dart_map(d, fmt=lambda v: v):
     return '{' + ', '.join("'%s': %s" % (k, fmt(v)) for k, v in d.items()) + '}'
 
-item_coins = {k: v[0] for k, v in items.items()}
-item_gems = {k: v[1] for k, v in items.items()}
+item_coins = dict(items)
 stage_map = '{' + ', '.join("'%s': [%s, %d]" % (k, num(v[0]), v[1]) for k, v in targets.items()) + '}'
 hero_stage_map = dart_map(hero_stage, lambda v: "'%s'" % v)
 
@@ -118,11 +115,11 @@ BIG = 999999999
 r2 = (ROOT / 'firestore_round2.rules').read_text()
 tail_start = r2.index('    // ── friend codes')
 tail = r2[tail_start:]
-# duel prize can't be set higher than the real table (20/40/60/100)
+# duel prize can't be set higher than the real table (200/400/600/1000 coins)
 tail = tail.replace(
     "&& request.resource.data.status == 'pending'\n        && request.resource.data.participants.size() == 2",
-    "&& request.resource.data.status == 'pending'\n        && request.resource.data.reward is int\n        && request.resource.data.reward <= 100\n        && request.resource.data.participants.size() == 2", 1)
-assert 'reward <= 100' in tail, 'could not patch the challenge create rule'
+    "&& request.resource.data.status == 'pending'\n        && request.resource.data.reward is int\n        && request.resource.data.reward <= 1000\n        && request.resource.data.participants.size() == 2", 1)
+assert 'reward <= 1000' in tail, 'could not patch the challenge create rule'
 
 RULES = r"""// ─────────────────────────────────────────────────────────────────────────
 // HakbangHero — Firestore rules WITH ECONOMY GUARD.
@@ -143,8 +140,7 @@ service cloud.firestore {
     // ── catalog (generated from hero_items.dart / hero_roster.dart) ──
     // Unknown ids cost 999999999, so they can never be "bought".
     function itemCoins(id) { return __ITEM_COINS__.get(id, __BIG__); }
-    function itemGems(id)  { return __ITEM_GEMS__.get(id, __BIG__); }
-    function heroGems(id)  { return __HERO_GEMS__.get(id, __BIG__); }
+    function heroCoins(id) { return __HERO_COINS__.get(id, __BIG__); }
     // earned heroes that need a cleared rank: hero id -> stage id
     function heroStage(id) { return __HERO_STAGE__.get(id, ''); }
     // rank / trial targets: mode id -> [km, seconds]
@@ -168,15 +164,29 @@ service cloud.firestore {
         && nd('last_run_id', '').size() > 0;
     }
 
+    // Daily coin cap for runs/duels: the app keeps coins_today (+ the day
+    // number, Manila time) and the rules make that counter honest.
+    function coinDay() { return math.floor((request.time.toMillis() + 28800000) / 86400000); }
+    function dailyCoinsOk() {
+      return delta('coins') == 0
+        || (nd('coins_today_day', -1) == coinDay()
+            && nd('coins_today', 0)
+               == (od('coins_today_day', -1) == coinDay() ? od('coins_today', 0) : 0)
+                  + delta('coins')
+            && nd('coins_today', 0) <= 12000);
+    }
+
     function runAmountsOk(a) {
-      return delta('coins') >= 0 && delta('coins') <= a.coinsEarned
+      // coins = the run's own coins + bonuses (daily quests, rank clears and
+      // stars, challenges, ghost win). 1 crystal used to be worth 10 coins.
+      return delta('coins') >= 0
+        && dailyCoinsOk()
+        && delta('coins') <= a.coinsEarned + 1500 + 300 * a.distanceKm
+                             + (changed('stage_records') ? 3000 : 0)
         && delta('xp') >= 0 && delta('xp') <= a.xpEarned
         && delta('total_km') >= 0 && delta('total_km') <= a.distanceKm + 0.001
         && delta('total_sessions') == 1
         && delta('loot_chests') >= 0 && delta('loot_chests') <= 3
-        && delta('gems') >= 0
-        && delta('gems') <= 150 + 30 * a.distanceKm
-                            + (changed('stage_records') ? 300 : 0)
         && request.time > od('last_run_at', epoch()) + duration.value(30, 's');
     }
 
@@ -211,7 +221,7 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.winner == uid
         && getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.status == 'done'
         && get(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.status != 'done'
-        && delta('gems') <= getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.reward;
+        && delta('coins') <= getAfter(/databases/$(database)/documents/challenges/$(nd('last_duel_id', ''))).data.reward;
     }
 
     // ── daily streak and weekly goal gifts ──
@@ -220,20 +230,19 @@ service cloud.firestore {
         && nd('streak_claims', []).hasAll(od('streak_claims', []))
         && nd('streak_claim_at', null) == request.time
         && request.time > od('streak_claim_at', epoch()) + duration.value(12, 'h')
-        && delta('gems') <= 400;
+        && delta('coins') <= 4000;
     }
 
     function weeklyOk() {
       return changed('weekly_goal_claimed')
         && nd('weekly_claim_at', null) == request.time
         && request.time > od('weekly_claim_at', epoch()) + duration.value(6, 'd')
-        && delta('gems') <= 50;
+        && delta('coins') <= 500;
     }
 
     // ── shop: every new item / hero must be paid at (at least) catalog price ──
     // arrayUnion appends, so the NEW entries are the tail of the new array.
     function ci(ni, j) { return j < ni.size() ? itemCoins(ni[j]) : 0; }
-    function gi(ni, j) { return j < ni.size() ? itemGems(ni[j]) : 0; }
     // weekly pick is 25% off: pay at least 75% of the price
     function minPay(v) { return math.floor(v * 0.75); }
 
@@ -242,13 +251,7 @@ service cloud.firestore {
            + minPay(ci(ni, k + 3)) + minPay(ci(ni, k + 4)) + minPay(ci(ni, k + 5))
            + minPay(ci(ni, k + 6));
     }
-    function itemGemsMin(ni, k) {
-      return minPay(gi(ni, k)) + minPay(gi(ni, k + 1)) + minPay(gi(ni, k + 2))
-           + minPay(gi(ni, k + 3)) + minPay(gi(ni, k + 4)) + minPay(gi(ni, k + 5))
-           + minPay(gi(ni, k + 6));
-    }
-
-    function heroGemsMin(nh, k) { return k < nh.size() ? heroGems(nh[k]) : 0; }
+    function heroCoinsMin(nh, k) { return k < nh.size() ? heroCoins(nh[k]) : 0; }
     function heroUnlockedByRank(nh, k) {
       return k >= nh.size()
         || heroStage(nh[k]) == ''
@@ -262,9 +265,7 @@ service cloud.firestore {
         && nd('owned_heroes', []).size() <= od('owned_heroes', []).size() + 1
         && od('coins', 0) - nd('coins', 0)
              >= itemCoinsMin(nd('owned_items', []), od('owned_items', []).size())
-        && od('gems', 0) - nd('gems', 0)
-             >= itemGemsMin(nd('owned_items', []), od('owned_items', []).size())
-                + heroGemsMin(nd('owned_heroes', []), od('owned_heroes', []).size())
+                + heroCoinsMin(nd('owned_heroes', []), od('owned_heroes', []).size())
         && heroUnlockedByRank(nd('owned_heroes', []), od('owned_heroes', []).size());
     }
 
@@ -282,19 +283,26 @@ service cloud.firestore {
              >= duration.value(6, 'd');
     }
 
+    // one-time cash-in of an old crystal balance: 1 crystal = 10 coins
+    function migrateOk() {
+      return od('gems', 0) > 0 && nd('gems', 0) == 0
+        && delta('coins') >= 0 && delta('coins') <= od('gems', 0) * 10;
+    }
+
     // ── put it together ──
     function economyOk(uid) {
       return
         checkInOk() &&
-        // money can always be SPENT, but only a run / duel / claim adds it
-        (delta('coins') <= 0 || runOk(uid))
-        && (delta('gems') <= 0 || runOk(uid) || duelWinOk(uid)
-            || streakOk() || weeklyOk())
+        // coins can always be SPENT, but only a run / duel / claim adds them
+        (delta('coins') <= 0 || runOk(uid) || duelWinOk(uid)
+            || streakOk() || weeklyOk() || migrateOk())
+        // crystals no longer exist: the old balance can only be cashed in
+        && delta('gems') <= 0
         && (delta('xp') <= 0 || runOk(uid))
         && (delta('total_km') <= 0 || runOk(uid))
         && (delta('total_sessions') <= 0 || runOk(uid))
         && (delta('loot_chests') <= 0 || runOk(uid))
-        && nd('coins', 0) >= 0 && nd('gems', 0) >= 0
+        && nd('coins', 0) >= 0
         // nobody lowers their own totals to dodge checks
         && delta('xp') >= 0 && delta('total_km') >= 0 && delta('total_sessions') >= 0
         && stageOk(uid)
@@ -313,13 +321,13 @@ service cloud.firestore {
         && nd('owned_heroes', []).hasAll(od('owned_heroes', []))
         && nd('owned_heroes', []).size() <= od('owned_heroes', []).size() + 1
         && (nd('owned_heroes', []).size() == od('owned_heroes', []).size()
-            || (heroGems(nd('owned_heroes', [])[od('owned_heroes', []).size()]) == 0
+            || (heroCoins(nd('owned_heroes', [])[od('owned_heroes', []).size()]) == 0
                 && heroUnlockedByRank(nd('owned_heroes', []), od('owned_heroes', []).size())));
     }
 
     // a new account starts with the sign-up gift only
     function freshAccount() {
-      return nd('coins', 0) <= 100 && nd('gems', 0) <= 10
+      return nd('coins', 0) <= 100 && nd('gems', 0) == 0
         && nd('xp', 0) == 0 && nd('total_km', 0) == 0
         && nd('total_sessions', 0) == 0
         && nd('owned_items', []).size() <= 12;
@@ -380,8 +388,7 @@ friends_block = friends_block.rstrip()[:-1].rstrip()
 
 out = (RULES
        .replace('__ITEM_COINS__', dart_map(item_coins))
-       .replace('__ITEM_GEMS__', dart_map(item_gems))
-       .replace('__HERO_GEMS__', dart_map(heroes))
+              .replace('__HERO_COINS__', dart_map(heroes))
        .replace('__HERO_STAGE__', hero_stage_map)
        .replace('__STAGE_TARGETS__', stage_map)
        .replace('__BIG__', str(BIG))

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:hakbanghero/models/activity_model.dart';
 import 'package:hakbanghero/models/daily_quest_definitions.dart';
@@ -18,7 +17,6 @@ import 'emoji_icons.dart';
 import 'lottie_fx.dart';
 
 const _yellow = Color(0xFFFFD21F);
-const _yellowEdge = Color(0xFF8A6D00);
 
 (Color, Color) _typeColors(ActivityType t) {
   switch (t) {
@@ -279,7 +277,7 @@ class TrackingView extends StatelessWidget {
         child: const Row(
           children: [
             Expanded(
-              child: BlockText('\u267E\uFE0F ENDLESS RUN', size: 13, stroke: 3.5),
+              child: BlockText('\u267E\uFE0F FREE RUN', size: 13, stroke: 3.5),
             ),
             BlockText('NO LIMITS', size: 11, stroke: 3, color: Color(0xFFD7C8FF)),
           ],
@@ -539,10 +537,10 @@ class SessionSummarySheet extends StatelessWidget {
   final String? outcome;
   final bool outcomeGood;
 
-  /// Stage record: stars earned this run (0 = not cleared) and the crystals
+  /// Stage record: stars earned this run (0 = not cleared) and the coins
   /// that came with it (first-clear bonus + new-star bonus).
   final int stars;
-  final int stageBonusGems;
+  final int stageBonusCoins;
   final bool firstClear;
 
   /// The next rank this clear just opened (null = none) and the shortcut to
@@ -566,7 +564,7 @@ class SessionSummarySheet extends StatelessWidget {
     this.outcome,
     this.outcomeGood = false,
     this.stars = 0,
-    this.stageBonusGems = 0,
+    this.stageBonusCoins = 0,
     this.firstClear = false,
     this.unlockedRank,
     this.onNextRank,
@@ -590,13 +588,32 @@ class SessionSummarySheet extends StatelessWidget {
     );
   }
 
+  /// A short, honest cheer line that matches how the run went.
+  String _cheer() {
+    if (unlockedRank != null) return 'NEW LEVEL OPEN! KEEP IT UP!';
+    if (outcome != null && !outcomeGood) return 'GOOD TRY! EVERY RUN MAKES YOU STRONGER.';
+    final km = session.distanceKm;
+    if (km >= 10) return 'WOW, 10 KM+! THAT IS A REAL ACHIEVEMENT!';
+    if (km >= 5) return 'GREAT RUN! YOU WENT THE DISTANCE!';
+    if (km >= 2) return 'NICE WORK! YOU ARE BUILDING A HABIT!';
+    return 'EVERY STEP COUNTS. SEE YOU AT THE NEXT RUN!';
+  }
+
   Widget _sheet(BuildContext context) {
-    final totalCrystals =
-        completedQuests.fold<int>(0, (s, q) => s + q.crystalReward);
+    final totalCoins =
+        completedQuests.fold<int>(0, (s, q) => s + q.coinReward);
     final (tc, te) = _typeColors(session.type);
 
     return SafeArea(
-      child: Padding(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeOutBack,
+        builder: (context, t, child) => Opacity(
+          opacity: t.clamp(0.0, 1.0),
+          child: Transform.scale(scale: 0.88 + 0.12 * t, child: child),
+        ),
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
         child: Block(
           color: const Color(0xFF9A9EA3),
@@ -613,7 +630,9 @@ class SessionSummarySheet extends StatelessWidget {
                   child: BlockText('🏆 SESSION COMPLETE!',
                       size: 24, stroke: 5, color: _yellow),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
+                BlockText(_cheer(), size: 12, stroke: 3, align: TextAlign.center),
+                const SizedBox(height: 10),
 
                 // Victory stage — full avatar, hop + celebration
                 Block(
@@ -705,7 +724,7 @@ class SessionSummarySheet extends StatelessWidget {
                     depth: 4,
                     radius: 10,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    child: BlockText('\u2694\uFE0F DUEL WON! +\u{1F48E}$g',
+                    child: BlockText('\u2694\uFE0F DUEL WON! +\u{1FA99}$g',
                         size: 12, stroke: 3, align: TextAlign.center),
                   ),
                 ],
@@ -789,7 +808,7 @@ class SessionSummarySheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         BlockText(
-                          '💎 QUEST${completedQuests.length > 1 ? 'S' : ''} COMPLETED!',
+                          '🪙 QUEST${completedQuests.length > 1 ? 'S' : ''} COMPLETED!',
                           size: 13,
                           stroke: 3.5,
                           color: Rb.neon,
@@ -805,7 +824,7 @@ class SessionSummarySheet extends StatelessWidget {
                                 child: BlockText(q.title,
                                     size: 12, stroke: 3, color: q.color),
                               ),
-                              BlockText('+${q.crystalReward}',
+                              BlockText('+${q.coinReward}',
                                   size: 12, stroke: 3),
                               const SizedBox(width: 2),
                               const SizedBox(
@@ -816,7 +835,7 @@ class SessionSummarySheet extends StatelessWidget {
                           Align(
                             alignment: Alignment.centerRight,
                             child: BlockText(
-                                'TOTAL +$totalCrystals 💎 MANA CRYSTALS',
+                                'TOTAL +$totalCoins 🪙 COINS',
                                 size: 12,
                                 stroke: 3,
                                 color: Rb.neon),
@@ -898,6 +917,7 @@ class SessionSummarySheet extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -905,7 +925,7 @@ class SessionSummarySheet extends StatelessWidget {
   Widget _challengePanel() {
     final chests = challenges.where((c) => c.lootChest).length;
     final xp = challenges.fold<int>(0, (s, c) => s + c.bonusXp);
-    final gems = challenges.fold<int>(0, (s, c) => s + c.bonusGems);
+    final gems = challenges.fold<int>(0, (s, c) => s + c.bonusCoins);
 
     return Block(
       color: const Color(0xFF2A0A0E),
@@ -937,7 +957,7 @@ class SessionSummarySheet extends StatelessWidget {
                       ? 'FAILED'
                       : c.lootChest
                           ? '+📦'
-                          : '+${c.bonusXp} EXP  +${c.bonusGems} 💎',
+                          : '+${c.bonusXp} EXP  +${c.bonusCoins} 🪙',
                   size: 12,
                   stroke: 3,
                 ),
@@ -978,7 +998,7 @@ class SessionSummarySheet extends StatelessWidget {
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerRight,
-              child: BlockText('BONUS +$xp EXP  +$gems 💎 MANA CRYSTALS',
+              child: BlockText('BONUS +$xp EXP  +$gems 🪙 COINS',
                   size: 11, stroke: 3, color: Rb.neon),
             ),
           ],
@@ -987,7 +1007,7 @@ class SessionSummarySheet extends StatelessWidget {
     );
   }
 
-  /// "VANGUARD RANK UNLOCKED!" right after the clear that opened it.
+  /// "INTERMEDIATE LEVEL UNLOCKED!" right after the clear that opened it.
   Widget _unlockBanner(RunMode r) {
     return Block(
       color: const Color(0xFF1E6B45),
@@ -1073,12 +1093,12 @@ class SessionSummarySheet extends StatelessWidget {
 
   Widget _modeRow(RunMode m) {
     final head = m.isEndless
-        ? '\u267E\uFE0F ENDLESS RUN'
+        ? '\u267E\uFE0F FREE RUN'
         : m.isInterval
             ? '\u26A1 ${outcome ?? 'INTERVAL RUN'}'
             : (outcome ?? m.name);
     final sub = m.isEndless
-        ? '+${m.multLabel} XP & Crystals per km'
+        ? '+${m.multLabel} XP & Coins per km'
         : m.isInterval
             ? '${m.name} \u2022 ${m.multLabel} rewards'
             : '${m.emoji} ${m.name} \u2022 ${m.mapName} \u2022 ${m.multLabel} rewards';
@@ -1101,10 +1121,10 @@ class SessionSummarySheet extends StatelessWidget {
           ],
           const SizedBox(height: 2),
           BlockText(sub, size: 10, stroke: 2.5, align: TextAlign.center),
-          if (stageBonusGems > 0) ...[
+          if (stageBonusCoins > 0) ...[
             const SizedBox(height: 4),
             BlockText(
-                '${firstClear ? 'FIRST CLEAR BONUS' : 'NEW STAR BONUS'}  +$stageBonusGems \u{1F48E}',
+                '${firstClear ? 'FIRST CLEAR BONUS' : 'NEW STAR BONUS'}  +$stageBonusCoins \u{1FA99}',
                 size: 12,
                 stroke: 3.5,
                 color: Rb.neon,
@@ -1118,7 +1138,7 @@ class SessionSummarySheet extends StatelessWidget {
   Widget _ghostResultRow(GhostResult r) {
     final secs = r.paceDelta.abs().round();
     final text = r.won
-        ? '\u{1F47B} GHOST BEATEN! $secs s/km faster  +${GhostResult.winGems} \u{1F48E}'
+        ? '\u{1F47B} GHOST BEATEN! $secs s/km faster  +${GhostResult.winCoins} \u{1FA99}'
         : '\u{1F47B} Ghost won this time \u2014 $secs s/km to find. Go again!';
     return Block(
       color: r.won ? const Color(0xFF1E6B45) : const Color(0xFF5B3A9E),

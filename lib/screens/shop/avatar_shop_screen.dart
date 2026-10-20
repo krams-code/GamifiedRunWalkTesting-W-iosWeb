@@ -24,10 +24,10 @@ import '../../widgets/lottie_fx.dart';
 //
 //  Tabs: FEATURED, HEROES, then one tab per slot (head, face, top...).
 //  Tap anything to TRY IT ON the live hero; BUY saves the look and pays for
-//  whatever is not owned yet (coins and/or gems).
+//  whatever is not owned yet (coins).
 //
 //  Firestore (users/{uid}):
-//    coins, gems, total_km, xp, stage_records    currencies + unlock rules
+//    coins, total_km, xp, stage_records          currency + unlock rules
 //    owned_items [id], owned_heroes [id]         bought things
 //    hero_id, hero_outfit {slot: id}             the saved look
 //    streak_claims [key]                         claimed streak rewards
@@ -117,7 +117,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
 
   // ── streak + weekly pick ──
 
-  static const List<(int, int)> _streakRewards = [(3, 25), (7, 75), (14, 150), (30, 400)];
+  static const List<(int, int)> _streakRewards = [(3, 250), (7, 750), (14, 1500), (30, 4000)];
 
   String _streakKey(int days) {
     final st = _act.streakStart;
@@ -126,7 +126,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     return '$days:${st.year}-${two(st.month)}-${two(st.day)}';
   }
 
-  Future<void> _claimStreak(String uid, int days, int gems) async {
+  Future<void> _claimStreak(String uid, int days, int bonus) async {
     final key = _streakKey(days);
     if (key.isEmpty || _claiming) return;
     setState(() => _claiming = true);
@@ -137,13 +137,13 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
         final done = (snap.data()?['streak_claims'] as List?)?.contains(key) ?? false;
         if (done) throw 'claimed';
         txn.update(ref, {
-          'gems': FieldValue.increment(gems),
+          'coins': FieldValue.increment(bonus),
           'streak_claims': FieldValue.arrayUnion([key]),
           'streak_claim_at': FieldValue.serverTimestamp(), // rules: 1 per day
         });
       });
       Sound.I.play(Sfx.gem);
-      _snack('\u{1F525} $days-day streak reward: +$gems \u{1F48E}');
+      _snack('\u{1F525} $days-day streak reward: +$bonus \u{1FA99}');
     } catch (e) {
       _snack(e == 'claimed' ? 'Already claimed.' : 'Claim failed. Try again.');
     } finally {
@@ -158,19 +158,16 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     return pool[Weekly.index(DateTime.now()) % pool.length];
   }
 
-  /// (coins, gems) price today, with the weekly discount.
-  (int, int) _price(HeroItem i) {
+  /// Coin price today, with the weekly discount.
+  int _price(HeroItem i) {
     final off = _weeklyPick()?.id == i.id;
-    int d(int v) {
-      if (v == 0 || !off) return v;
-      return (v * (1 - kWeeklyDiscount)).round().clamp(1, v).toInt();
-    }
-    return (d(i.coins), d(i.gems));
+    final v = i.coins;
+    if (v == 0 || !off) return v;
+    return (v * (1 - kWeeklyDiscount)).round().clamp(1, v).toInt();
   }
 
   String _priceText(HeroItem i) {
-    final (c, g) = _price(i);
-    if (g > 0) return '$g \u{1F48E}';
+    final c = _price(i);
     if (c > 0) return '$c \u{1FA99}';
     return i.isFree ? 'FREE' : 'EARN';
   }
@@ -181,7 +178,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   bool _ruleLockedItem(HeroItem i, _Data s) => !_ownedItem(i, s) && !i.rule.met(s.p);
   bool _ownedHero(HeroDef h, _Data s) => isHeroUnlocked(h, s.p);
   bool _ruleLockedHero(HeroDef h, _Data s) =>
-      !_ownedHero(h, s) && (h.gemPrice == 0 || !h.rule.met(s.p));
+      !_ownedHero(h, s) && (h.coinPrice == 0 || !h.rule.met(s.p));
 
   List<HeroItem> _draftItems() {
     final out = <HeroItem>[];
@@ -194,17 +191,15 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     return out;
   }
 
-  ({int coins, int gems}) _cost(_Data s) {
-    var coins = 0, gems = 0;
+  int _cost(_Data s) {
+    var coins = 0;
     for (final i in _draftItems()) {
       if (_ownedItem(i, s)) continue;
-      final (c, g) = _price(i);
-      coins += c;
-      gems += g;
+      coins += _price(i);
     }
     final h = heroById(_heroD);
-    if (h != null && !_ownedHero(h, s)) gems += h.gemPrice;
-    return (coins: coins, gems: gems);
+    if (h != null && !_ownedHero(h, s)) coins += h.coinPrice;
+    return coins;
   }
 
   bool _changed(_Data s) {
@@ -256,9 +251,9 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   void _costumeNotice() {
     showInfoSheet(
       context,
-      title: 'COSTUME HERO',
+      title: 'COSTUMES CAN\'T WEAR GEAR',
       message:
-          '${heroById(_heroD)?.name ?? 'This hero'} wears its own outfit, so shop gear is for the human hero SPROUT. Switch to SPROUT to try gear on.',
+          '${heroById(_heroD)?.name ?? 'This costume'} comes with its own outfit, so shop gear can only be worn by SPROUT, your main hero. Switch to SPROUT to try gear on.',
       art: HeroStill(heroId: _heroD, tier: BodyTier.normal),
       actionLabel: 'SWITCH TO SPROUT',
       onAction: () => setState(() => _heroD = kDefaultHeroId),
@@ -275,8 +270,8 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     final oh = heroById(s.heroId);
     showConfirmSheet(
       context,
-      title: 'CHANGE HERO?',
-      message: 'Switch from ${oh?.name ?? 'your hero'} to ${nh?.name ?? 'this hero'}? '
+      title: 'CHANGE COSTUME?',
+      message: 'Switch from ${oh?.name ?? 'your look'} to ${nh?.name ?? 'this costume'}? '
           '${(nh?.costume ?? false) && !(oh?.costume ?? false) ? '${nh!.name} wears its own outfit, so your shop gear stays saved for SPROUT. ' : ''}'
           'You can switch back any time.',
       art: HeroStill(heroId: _heroD, tier: BodyTier.normal),
@@ -288,27 +283,27 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   void _openHeroSheet(HeroDef h, _Data s) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final goalsDone = h.rule.met(s.p);
-    final price = h.gemPrice > 0 ? '${h.gemPrice} \u{1F48E}' : null;
+    final price = h.coinPrice > 0 ? '${h.coinPrice} \u{1FA99}' : null;
     showUnlockSheet(
       context,
       title: h.name,
-      kind: '${h.rarityLabel} HERO',
+      kind: h.id == kDefaultHeroId ? 'MAIN HERO' : '${h.rarityLabel} COSTUME',
       art: HeroStill(heroId: h.id, tier: BodyTier.normal),
       reqs: [
         ...unlockReqs(h.rule, s.p),
         if (price != null)
-          UnlockReq('Get ${h.gemPrice} \u{1F48E} crystals',
-              progress: '${s.p.gems} / ${h.gemPrice}',
-              fraction: (s.p.gems / h.gemPrice).clamp(0.0, 1.0),
-              done: s.p.gems >= h.gemPrice),
+          UnlockReq('Get ${h.coinPrice} \u{1FA99} coins',
+              progress: '${s.p.coins} / ${h.coinPrice}',
+              fraction: (s.p.coins / h.coinPrice).clamp(0.0, 1.0),
+              done: s.p.coins >= h.coinPrice),
       ],
       priceLabel: price,
-      youHave: price == null ? null : 'You have ${_fmt(s.p.gems)} \u{1F48E}',
+      youHave: price == null ? null : 'You have ${_fmt(s.p.coins)} \u{1FA99}',
       tip: unlockTip(h.rule, s.p) ??
-          (price != null && s.p.gems < h.gemPrice
-              ? 'Crystals come from daily quests, first rank clears and stars.'
+          (price != null && s.p.coins < h.coinPrice
+              ? 'Coins come from every run, daily quests, rank clears and stars.'
               : null),
-      canBuy: uid != null && goalsDone && s.p.gems >= h.gemPrice && h.gemPrice > 0,
+      canBuy: uid != null && goalsDone && s.p.coins >= h.coinPrice && h.coinPrice > 0,
       onBuy: uid == null
           ? null
           : () {
@@ -328,11 +323,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       art: ItemCrop(item: i, heroId: kDefaultHeroId, tier: BodyTier.normal),
       reqs: unlockReqs(i.rule, s.p),
       priceLabel: i.isForSale ? _priceText(i) : null,
-      youHave: !i.isForSale
-          ? null
-          : i.gems > 0
-              ? 'You have ${_fmt(s.p.gems)} \u{1F48E}'
-              : 'You have ${_fmt(s.p.coins)} \u{1FA99}',
+      youHave: !i.isForSale ? null : 'You have ${_fmt(s.p.coins)} \u{1FA99}',
       tip: unlockTip(i.rule, s.p),
     );
   }
@@ -373,32 +364,28 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
         final snap = await txn.get(ref);
         final fresh = _Data.from(snap.data() ?? <String, dynamic>{});
 
-        var coins = 0, gems = 0;
+        var coins = 0;
         final newItems = <String>[];
         for (final i in _draftItems()) {
           if (_ownedItem(i, fresh)) continue;
           if (_ruleLockedItem(i, fresh)) throw 'locked';
-          final (c, g) = _price(i);
-          coins += c;
-          gems += g;
+          coins += _price(i);
           newItems.add(i.id);
         }
         final h = heroById(_heroD);
         String? newHero;
         if (h != null && !_ownedHero(h, fresh)) {
           if (_ruleLockedHero(h, fresh)) throw 'locked';
-          gems += h.gemPrice;
+          coins += h.coinPrice;
           newHero = h.id;
         }
         if (fresh.p.coins < coins) throw 'coins';
-        if (fresh.p.gems < gems) throw 'gems';
 
         final up = <String, dynamic>{
           'hero_id': _heroD,
           'hero_outfit': Map<String, String>.of(_outD),
         };
         if (coins > 0) up['coins'] = FieldValue.increment(-coins);
-        if (gems > 0) up['gems'] = FieldValue.increment(-gems);
         if (newItems.isNotEmpty) up['owned_items'] = FieldValue.arrayUnion(newItems);
         if (newHero != null) up['owned_heroes'] = FieldValue.arrayUnion([newHero]);
         txn.update(ref, up);
@@ -407,9 +394,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       _snack('✅ Look saved!');
     } catch (e) {
       Sound.I.play(Sfx.error);
-      _snack(e == 'gems'
-          ? 'Not enough gems!'
-          : e == 'coins'
+      _snack(e == 'coins'
               ? 'Not enough coins!'
               : e == 'locked'
                   ? 'Something is still locked.'
@@ -427,7 +412,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     if (uid == null) {
       return const Scaffold(
         backgroundColor: Rb.bg,
-        body: const LoadingRunner(),
+        body: LoadingRunner(),
       );
     }
 
@@ -553,8 +538,6 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
           chip('LV ${s.p.level}', Rb.green, Rb.greenEdge),
           const SizedBox(width: 5),
           chip('\u{1FA99} ${_fmt(s.p.coins)}', Rb.orange, Rb.orangeEdge),
-          const SizedBox(width: 5),
-          chip('\u{1F48E} ${_fmt(s.p.gems)}', Rb.blue, Rb.blueEdge),
         ],
       ),
     );
@@ -588,7 +571,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
               decoration: const InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
-                hintText: 'Search heroes and items',
+                hintText: 'Search costumes and items',
                 hintStyle: TextStyle(color: Colors.white38, fontWeight: FontWeight.w800),
               ),
             ),
@@ -782,7 +765,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
             children: [
               BlockText('\u{1F525} $days-DAY STREAK', size: 14, stroke: 4),
               const Spacer(),
-              const BlockText('run daily for gems', size: 9, stroke: 2.5),
+              const BlockText('run daily for coins', size: 9, stroke: 2.5),
             ],
           ),
           const SizedBox(height: 7),
@@ -799,7 +782,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  Widget _streakChip(String? uid, _Data s, int need, int gems, int days) {
+  Widget _streakChip(String? uid, _Data s, int need, int bonus, int days) {
     final key = _streakKey(need);
     final claimed = key.isNotEmpty && s.streakClaims.contains(key);
     final ready = days >= need && !claimed && uid != null;
@@ -812,14 +795,14 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       radius: 11,
       forcePressed: claimed,
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-      onTap: ready && !_claiming ? () => _claimStreak(uid!, need, gems) : null,
+      onTap: ready && !_claiming ? () => _claimStreak(uid, need, bonus) : null,
       child: Column(
         children: [
           BlockText('${need}D', size: 11.5, stroke: 3.5),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: BlockText(
-              claimed ? '✔' : '\u{1F48E}$gems',
+              claimed ? '✔' : '\u{1FA99}$bonus',
               size: 10.5,
               stroke: 3,
               color: claimed ? Rb.neon : (ready ? Colors.white : Rb.gold),
@@ -1189,7 +1172,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   Widget _heroTile(HeroDef h, _Data s, BodyTier tier) {
     final owned = _ownedHero(h, s);
     final locked = _ruleLockedHero(h, s);
-    final price = h.gemPrice > 0 ? '${h.gemPrice} \u{1F48E}' : (h.starter ? 'FREE' : 'EARN');
+    final price = h.coinPrice > 0 ? '${h.coinPrice} \u{1FA99}' : (h.starter ? 'FREE' : 'EARN');
     return _tile(
       art: _heroArt(h, tier),
       name: h.name,
@@ -1254,19 +1237,13 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  String _costText(({int coins, int gems}) c) {
-    final parts = <String>[];
-    if (c.coins > 0) parts.add('${_fmt(c.coins)} \u{1FA99}');
-    if (c.gems > 0) parts.add('${_fmt(c.gems)} \u{1F48E}');
-    return parts.isEmpty ? '0' : parts.join(' + ');
-  }
+  String _costText(int c) => c > 0 ? '${_fmt(c)} \u{1FA99}' : '0';
 
   Widget _buildActionRow(_Data s, String uid) {
     final cost = _cost(s);
     final changed = _changed(s);
-    final needCoins = cost.coins - s.p.coins;
-    final needGems = cost.gems - s.p.gems;
-    final broke = needCoins > 0 || needGems > 0;
+    final needCoins = cost - s.p.coins;
+    final broke = needCoins > 0;
     final lockedName = _lockedInDraft(s);
 
     String label;
@@ -1289,19 +1266,17 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       fill = Rb.panel;
       edge = Rb.panelEdge;
     } else if (broke) {
-      label = needGems > 0 ? 'NEED ${_fmt(needGems)} \u{1F48E}' : 'NEED ${_fmt(needCoins)} \u{1FA99}';
+      label = 'NEED ${_fmt(needCoins)} \u{1FA99}';
       sub = 'Tap to see how to get more';
       fill = Rb.red;
       edge = Rb.redEdge;
       onTap = () => showNeedMoreSheet(
             context,
             what: 'YOUR LOOK',
-            needGems: needGems > 0 ? cost.gems : 0,
-            haveGems: s.p.gems,
-            needCoins: needGems > 0 || needCoins <= 0 ? 0 : cost.coins,
+            needCoins: cost,
             haveCoins: s.p.coins,
           );
-    } else if (cost.coins == 0 && cost.gems == 0) {
+    } else if (cost == 0) {
       label = 'SAVE';
       sub = 'Wear this look';
       onTap = () => _askThenSave(uid, s);
@@ -1400,7 +1375,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
-  Widget _buildSummary(List<HeroItem> items, ({int coins, int gems}) cost, _Data s,
+  Widget _buildSummary(List<HeroItem> items, int cost, _Data s,
       {required double height}) {
     final hero = heroById(_heroD);
     return Block(
@@ -1420,7 +1395,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
                 children: [
                   if (hero != null)
                     _sumRow(const PixelIcon(AppIcons.hero, size: 16), hero.name,
-                        _ownedHero(hero, s) ? 'OWNED' : '${hero.gemPrice} \u{1F48E}',
+                        _ownedHero(hero, s) ? 'OWNED' : '${hero.coinPrice} \u{1FA99}',
                         _ownedHero(hero, s)),
                   for (final i in items)
                     _sumRow(PixelIcon(i.iconPath, size: 16), i.name,
