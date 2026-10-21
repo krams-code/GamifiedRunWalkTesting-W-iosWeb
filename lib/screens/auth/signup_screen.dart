@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/google_auth.dart';
 import '../../utils/password_rules.dart';
 import '../../widgets/block_inputs.dart';
 import '../../widgets/block_ui.dart';
@@ -150,16 +151,13 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _signupGoogle() async {
     setState(() => _loading = true);
-    try {
-      final cred =
-          await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
-      if (cred.user == null) return;
-      await _createUserDoc(cred.user!, cred.user!.displayName ?? 'Hero');
+    final r = await GoogleAuth.signIn();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (r.ok) {
       _goHome();
-    } on FirebaseAuthException catch (e) {
-      _snack(e.message ?? 'Google sign-up failed.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    } else {
+      _snack(r.message ?? 'Google sign-up failed.');
     }
   }
 

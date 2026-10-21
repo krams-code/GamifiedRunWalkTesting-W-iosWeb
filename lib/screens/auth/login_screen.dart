@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/google_auth.dart';
 import '../../widgets/block_inputs.dart';
 import '../../widgets/block_ui.dart';
 import '../character/character_creation_screen.dart';
@@ -67,16 +68,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loginGoogle() async {
     setState(() => _loading = true);
-    try {
-      final cred =
-          await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
-      if (mounted && cred.user != null) _goHome();
-    } on FirebaseAuthException catch (e) {
-      _snack(e.message ?? 'Google sign-in failed.');
-    } catch (e) {
-      _snack('Google sign-in failed. Try again.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    final r = await GoogleAuth.signIn();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (r.ok) {
+      _goHome();
+    } else {
+      _snack(r.message ?? 'Google sign-in failed. Try again.');
     }
   }
 
