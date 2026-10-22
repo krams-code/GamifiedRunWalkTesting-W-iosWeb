@@ -163,6 +163,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     _buildPortal(stage: stage, data: data),
                     const SizedBox(height: 14),
                     _buildActionButton(),
+                    const SizedBox(height: 14),
+                    _buildTodayGoal(dailyKm: dailyKm, claimedMap: claimedMap),
                     const SizedBox(height: 18),
                     _buildQuests(dailyKm: dailyKm, claimedMap: claimedMap),
                     const SizedBox(height: 12),
@@ -325,9 +327,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
-                                BlockBackground(
-                                  id: bgId,
-                                  fallback: LandscapeTheme.forWorld(world),
+                                // sunny meadow: the hero stands on the grass strip
+                                Image.asset(
+                                  'assets/images/backgrounds/home_meadow.jpg',
+                                  fit: BoxFit.cover,
+                                  alignment: const Alignment(0.3, 1),
+                                  filterQuality: FilterQuality.medium,
+                                  errorBuilder: (_, __, ___) => BlockBackground(
+                                    id: bgId,
+                                    fallback: LandscapeTheme.forWorld(world),
+                                  ),
                                 ),
                                 AnimatedBuilder(
                                   animation: _idleController,
@@ -339,7 +348,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         offset: Offset(0, dy), child: child);
                                   },
                                   child: Padding(
-                                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                                    // bottom gap lifts the feet onto the grass strip
+                                    padding: EdgeInsets.only(top: 8, bottom: h * 0.11),
                                     child: FittedBox(
                                       fit: BoxFit.contain,
                                       clipBehavior: Clip.none,
@@ -441,6 +451,73 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.symmetric(vertical: 20),
       onTap: _onStartRun,
       child: const Center(child: BlockText('⚔️ ENTER DUNGEON', size: 24, stroke: 5)),
+    );
+  }
+
+  // ───────────────────────── today's goal (compact, above the fold) ─────────────────────────
+
+  Widget _buildTodayGoal({
+    required double dailyKm,
+    required Map<String, dynamic> claimedMap,
+  }) {
+    final done = kDailyQuests.where((q) => claimedMap[q.id] == true).length;
+    final total = kDailyQuests.length;
+    // next quest still to finish: the easiest unclaimed one
+    final open = kDailyQuests.where((q) => claimedMap[q.id] != true).toList()
+      ..sort((a, b) => a.thresholdKm.compareTo(b.thresholdKm));
+    final next = open.isEmpty ? null : open.first;
+
+    final String headline;
+    final String sub;
+    final double progress;
+    if (next == null) {
+      headline = 'ALL DAILY QUESTS DONE! 🎉';
+      sub = 'Great work today. New quests tomorrow.';
+      progress = 1.0;
+    } else {
+      final left = (next.thresholdKm - dailyKm).clamp(0.0, next.thresholdKm);
+      headline = next.title.toUpperCase();
+      sub = left <= 0
+          ? 'Finish a session to claim +${next.coinReward} 🪙'
+          : '${left.toStringAsFixed(2)} km to go  •  +${next.coinReward} 🪙';
+      progress = (dailyKm / next.thresholdKm).clamp(0.0, 1.0).toDouble();
+    }
+
+    return Block(
+      color: Rb.hud,
+      edge: Rb.hudEdge,
+      depth: 5,
+      radius: 16,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const BlockText("🎯 TODAY'S GOAL", size: 13, stroke: 3.5),
+              const Spacer(),
+              BlockText('$done / $total DONE',
+                  size: 10, stroke: 3, color: Rb.gold),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: BlockText(headline,
+                    size: 12, stroke: 3, maxLines: 1),
+              ),
+              BlockText('${dailyKm.toStringAsFixed(2)} km today',
+                  size: 10, stroke: 2.5, color: Rb.neon),
+            ],
+          ),
+          const SizedBox(height: 6),
+          BlockBar(value: progress, height: 16),
+          const SizedBox(height: 6),
+          BlockText(sub,
+              size: 10, stroke: 2.5, color: const Color(0xFFB8BDC4)),
+        ],
+      ),
     );
   }
 

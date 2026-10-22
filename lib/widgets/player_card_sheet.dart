@@ -5,7 +5,9 @@ import '../services/friends_service.dart';
 import '../services/presence.dart';
 import 'block_ui.dart';
 import 'hero_sprite.dart';
+import '../models/badge_definitions.dart';
 import '../models/hero_roster.dart';
+import 'badges_panel.dart';
 
 /// Tap a player on the leaderboard -> a small "profile card" with their
 /// summarized totals (read-only, built from the public user doc).
@@ -240,6 +242,8 @@ class _PlayerCardState extends State<_PlayerCard> {
             const SizedBox(width: 8),
             _stat('HEROES', '$owned', Rb.slate, Rb.slateEdge),
           ]),
+          const SizedBox(height: 12),
+          _badgesRow(),
           const SizedBox(height: 14),
           _friendButton(),
           if (_note != null)
@@ -264,6 +268,44 @@ class _PlayerCardState extends State<_PlayerCard> {
               child: Center(child: BlockText('CLOSE', size: 15, stroke: 4)),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Badges anyone can verify from the public user doc (sessions, km, level).
+  Widget _badgesRow() {
+    final stats = BadgeStats.fromPublic(d);
+    final earned =
+        kBadges.where((b) => b.public && b.unlocked(stats)).toList();
+    return Block(
+      color: Rb.slate,
+      edge: Rb.slateEdge,
+      depth: 4,
+      radius: 12,
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            const BlockText('🎖️ BADGES', size: 12, stroke: 3),
+            const Spacer(),
+            BlockText('${earned.length}',
+                size: 12, stroke: 3, color: Rb.gold),
+          ]),
+          const SizedBox(height: 8),
+          if (earned.isEmpty)
+            const BlockText('No badges yet.',
+                size: 10, stroke: 2.5, color: Color(0xFFB8BDC4))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final b in earned)
+                  BadgeMedal(badge: b, unlocked: true, size: 52),
+              ],
+            ),
         ],
       ),
     );

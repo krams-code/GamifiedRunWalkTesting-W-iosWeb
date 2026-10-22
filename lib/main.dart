@@ -3,9 +3,12 @@ import 'services/presence.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/character/character_creation_screen.dart';
 import 'screens/main_shell.dart';
+import 'state/user_doc.dart';
 import 'screens/startup_screen.dart';
 import 'firebase_options.dart';
 
@@ -133,10 +136,32 @@ class _AuthGate extends StatelessWidget {
           return StartupGate(
             key: ValueKey(user.uid),
             uid: user.uid,
-            child: const MainShell(),
+            child: const _CreationGate(),
           );
         }
         return const _SilentLogin();
+      },
+    );
+  }
+}
+/// Signed in but the hero was never finished (the app was closed in the middle
+/// of Character Creation): go back to Character Creation instead of the app.
+/// Anyone who finished it, or whose profile can't be read yet, gets the app.
+class _CreationGate extends StatelessWidget {
+  const _CreationGate();
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: uid == null ? null : UserDoc.instance.stream,
+      initialData: UserDoc.instance.snapshotFor(uid),
+      builder: (context, snap) {
+        final d = snap.data?.data();
+        if (d != null && d['character_created'] == false) {
+          return const CharacterCreationScreen();
+        }
+        return const MainShell();
       },
     );
   }

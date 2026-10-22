@@ -1,4 +1,7 @@
 import 'sync_chip.dart';
+import 'scene_backdrop.dart';
+import '../models/daily_quest_definitions.dart';
+import '../services/run_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -37,7 +40,6 @@ const _goldEdge   = Color(0xFF8A5A00);
 const _walk       = Color(0xFF7EE08A); // pastel green
 
 const _sky        = Color(0xFF8FD0FF);
-const _baseplate  = Color(0xFF5FA05A);
 
 // ───────────────────────── Milestones (Trophy Road) ─────────────────────────
 
@@ -127,7 +129,9 @@ class PreRunView extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
                         _buildViewport(data),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
+                        _buildTodayGoal(data),
+                        const SizedBox(height: 14),
                         _buildModeHint(data?['stage_records']),
                         const SizedBox(height: 14),
                         const WeeklyGoalCard(),
@@ -338,8 +342,9 @@ class PreRunView extends StatelessWidget {
 
   Widget _buildViewport(Map<String, dynamic>? data) {
     return LayoutBuilder(builder: (context, c) {
-      final w = c.maxWidth.clamp(0.0, 340.0).toDouble();
-      final h = w * 1.12;
+      // wide screens get a bigger stage (like the live run); phones fill the row
+      final w = c.maxWidth.clamp(0.0, 520.0).toDouble();
+      final h = (w * 1.12).clamp(0.0, 520.0).toDouble();
 
       return Center(
         child: Padding(
@@ -359,30 +364,14 @@ class PreRunView extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // baseplate
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: FractionallySizedBox(
-                      heightFactor: 0.09,
-                      widthFactor: 1,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: _baseplate,
-                          border: Border(
-                            top: BorderSide(color: Color(0xFF3F7A3B), width: 4),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // blocky clouds
-                  const Positioned(left: 18, top: 22, child: _Cloud(width: 64)),
-                  const Positioned(right: 20, top: 52, child: _Cloud(width: 48)),
+                  // sunny meadow by day, moonlit by night (real clock)
+                  const SceneBackdrop(),
 
                   // the avatar model. World = 286x560: the 286x512 sprite sits
                   // 44px down so tall hair spikes have headroom above it.
                   Padding(
-                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    padding: EdgeInsets.only(
+                        top: 10, bottom: h * SceneBackdrop.grassFraction),
                     child: FittedBox(
                       fit: BoxFit.contain,
                       clipBehavior: Clip.none,
@@ -429,6 +418,76 @@ class PreRunView extends StatelessWidget {
         ),
       );
     });
+  }
+
+  // ───────────── today's goal ─────────────
+
+  Widget _buildTodayGoal(Map<String, dynamic>? data) {
+    final stored = data?['daily_progress_date'] as String? ?? '';
+    final same = stored == RunSaver.todayString();
+    final dailyKm =
+        same ? (data?['daily_progress_km'] as num?)?.toDouble() ?? 0.0 : 0.0;
+    final claimed = same && data?['daily_quests_claimed'] is Map
+        ? Map<String, dynamic>.from(data!['daily_quests_claimed'] as Map)
+        : <String, dynamic>{};
+
+    final total = kDailyQuests.length;
+    final done = kDailyQuests.where((q) => claimed[q.id] == true).length;
+    final open = kDailyQuests.where((q) => claimed[q.id] != true).toList()
+      ..sort((a, b) => a.thresholdKm.compareTo(b.thresholdKm));
+    final next = open.isEmpty ? null : open.first;
+
+    final String headline;
+    final String sub;
+    final double progress;
+    if (next == null) {
+      headline = 'ALL DAILY QUESTS DONE!';
+      sub = 'Great work today. New quests tomorrow.';
+      progress = 1.0;
+    } else {
+      final left = (next.thresholdKm - dailyKm).clamp(0.0, next.thresholdKm);
+      headline = next.title.toUpperCase();
+      sub = left <= 0
+          ? 'Finish a session to claim +${next.coinReward} coins'
+          : '${left.toStringAsFixed(2)} km to go  \u2022  +${next.coinReward} coins';
+      progress = (dailyKm / next.thresholdKm).clamp(0.0, 1.0).toDouble();
+    }
+
+    return Block(
+      color: _panel,
+      edge: _panelEdge,
+      depth: 5,
+      radius: 16,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const BlockText("\u{1F3AF} TODAY'S GOAL", size: 13, stroke: 3.5),
+              const Spacer(),
+              BlockText('$done / $total DONE',
+                  size: 10, stroke: 3, color: _gold),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: BlockText(headline, size: 12, stroke: 3, maxLines: 1),
+              ),
+              BlockText('${dailyKm.toStringAsFixed(2)} km today',
+                  size: 10, stroke: 2.5, color: const Color(0xFF39FF88)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          BlockBar(value: progress, height: 16),
+          const SizedBox(height: 6),
+          BlockText(sub,
+              size: 10, stroke: 2.5, color: const Color(0xFFB8BDC4)),
+        ],
+      ),
+    );
   }
 
   // ───────────── mode hint (replaces the old WALK / JOG / RUN cards) ─────────────
@@ -632,49 +691,4 @@ class _FirstModeGateState extends State<_FirstModeGate> {
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-// ───────────────────────── Decor ─────────────────────────
-
-/// Simple blocky cloud for the sky backdrop.
-class _Cloud extends StatelessWidget {
-  final double width;
-  const _Cloud({required this.width});
-
-  @override
-  Widget build(BuildContext context) {
-    final h = width * 0.32;
-    return SizedBox(
-      width: width,
-      height: h * 1.6,
-      child: Stack(
-        children: [
-          Positioned(
-            left: width * 0.18,
-            top: 0,
-            child: Container(
-              width: width * 0.5,
-              height: h,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(6),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            bottom: 0,
-            child: Container(
-              width: width,
-              height: h,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(6),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

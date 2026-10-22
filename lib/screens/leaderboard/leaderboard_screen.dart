@@ -218,32 +218,19 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Widget _buildFilterChips() {
-    Widget chip(String label, String value, {bool disabled = false}) {
+    Widget chip(String label, String value) {
       final selected = _genderFilter == value;
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: PressBlock(
-          color: disabled
-              ? Rb.panel
-              : selected
-                  ? Rb.green
-                  : Rb.slot,
-          edge: disabled
-              ? Rb.panelEdge
-              : selected
-                  ? Rb.greenEdge
-                  : Rb.slateEdge,
+          color: selected ? Rb.green : Rb.slot,
+          edge: selected ? Rb.greenEdge : Rb.slateEdge,
           depth: 4,
           radius: 12,
-          forcePressed: selected && !disabled,
+          forcePressed: selected,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          onTap: disabled
-              ? () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Local leaderboard coming soon!')),
-                  )
-              : () => setState(() => _genderFilter = value),
-          child: BlockText(label, size: 11, stroke: 3,
-              color: disabled ? Colors.white54 : Colors.white),
+          onTap: () => setState(() => _genderFilter = value),
+          child: BlockText(label, size: 11, stroke: 3),
         ),
       );
     }
@@ -255,7 +242,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           chip('GLOBAL', 'all'),
           chip('BOYS', 'male'),
           chip('GIRLS', 'female'),
-          chip('LOCAL 📍', 'local', disabled: true),
         ],
       ),
     );

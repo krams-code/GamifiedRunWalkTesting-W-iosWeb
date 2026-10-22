@@ -242,19 +242,20 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    // The profile/coins header belongs to the HOME (RUN) tab only. Every other
+    // module has its own header, and it is hidden mid-run so nothing can
+    // interrupt tracking.
+    final showTopBar = !_isTrackingActive && _currentIndex == 2;
     return Scaffold(
       backgroundColor: Rb.bg,
       body: Column(
         children: [
-          // Global header: profile block + username + logout tray.
-          // Hidden mid-run so nothing can interrupt tracking.
-          if (!_isTrackingActive)
-            _topBar,
+          if (showTopBar) _topBar,
           Expanded(
             child: MediaQuery.removePadding(
               context: context,
-              // the top bar already covers the status-bar inset
-              removeTop: !_isTrackingActive,
+              // when the top bar is shown it already covers the status-bar inset
+              removeTop: showTopBar,
               child: Stack(
                 children: [
                   IndexedStack(

@@ -10,6 +10,7 @@ import '../../models/hero_roster.dart';
 import '../../state/evolution_state.dart';
 import '../../widgets/block_ui.dart';
 import '../../widgets/hero_rig.dart';
+import '../../widgets/scene_backdrop.dart';
 import '../../widgets/pixel_icon.dart';
 import '../shop/avatar_shop_screen.dart' show ItemCrop;
 import '../../state/user_doc.dart';
@@ -186,8 +187,30 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
               SizedBox(
                 width: 84,
                 height: 150,
-                child: HeroRig(
-                    heroId: heroId, tier: tier, pose: _pose, height: 150, outfit: worn),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      const SceneBackdrop(),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 150 * SceneBackdrop.grassFraction,
+                        child: SizedBox(
+                          height: 150 * (1 - SceneBackdrop.grassFraction) - 6,
+                          child: HeroRig(
+                              heroId: heroId,
+                              tier: tier,
+                              pose: _pose,
+                              height:
+                                  150 * (1 - SceneBackdrop.grassFraction) - 6,
+                              outfit: worn),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(

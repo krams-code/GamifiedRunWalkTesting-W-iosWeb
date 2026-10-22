@@ -11,6 +11,7 @@ import 'avatar_preview.dart';
 import 'block_ui.dart';
 import 'emoji_icons.dart';
 import '../state/user_doc.dart';
+import '../state/evolution_state.dart';
 import 'lottie_fx.dart';
 
 /// Global top bar shown on every tab (hidden during a run).
@@ -46,42 +47,62 @@ class GlobalTopBar extends StatelessWidget {
           return Row(
             children: [
               // ── Profile action block ──
-              PressBlock(
-                color: Rb.gold,
-                edge: Rb.goldEdge,
-                depth: 5,
-                radius: 14,
-                padding: const EdgeInsets.all(3),
-                onTap: () => _openSheet(context, d),
-                child: SizedBox(
-                  width: 46,
-                  height: 46,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(9),
-                    child: ColoredBox(
-                      color: const Color(0xFF8FD0FF),
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        alignment: const Alignment(0, -0.9),
-                        child: SizedBox(
-                          width: kSpriteWidth,
-                          height: kSpriteHeight + 44,
-                          child: Stack(children: [
-                            Positioned(
-                              left: 0,
-                              top: 44,
-                              width: kSpriteWidth,
-                              height: kSpriteHeight,
-                              child: AvatarPreview.fromData(d,
-                                  filterQuality: FilterQuality.medium,
-                                  ownerUid: uid),
-                            ),
-                          ]),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                                PressBlock(
+                                  color: Rb.gold,
+                                  edge: Rb.goldEdge,
+                                  depth: 5,
+                                  radius: 14,
+                                  padding: const EdgeInsets.all(3),
+                                  onTap: () => _openSheet(context, d),
+                                  child: SizedBox(
+                                    width: 46,
+                                    height: 46,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(9),
+                                      child: ColoredBox(
+                                        color: const Color(0xFF8FD0FF),
+                                        child: FittedBox(
+                                          fit: BoxFit.cover,
+                                          alignment: const Alignment(0, -0.9),
+                                          child: SizedBox(
+                                            width: kSpriteWidth,
+                                            height: kSpriteHeight + 44,
+                                            child: Stack(children: [
+                                              Positioned(
+                                                left: 0,
+                                                top: 44,
+                                                width: kSpriteWidth,
+                                                height: kSpriteHeight,
+                                                child: AvatarPreview.fromData(d,
+                                                    filterQuality: FilterQuality.medium,
+                                                    ownerUid: uid),
+                                              ),
+                                            ]),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                  // red dot: the weekly check-in is due (open your profile)
+                  if (EvolutionState.isCheckInDue(d))
+                    Positioned(
+                      right: -3,
+                      top: -3,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF3B30),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.black, width: 2.5),
                         ),
                       ),
                     ),
-                  ),
-                ),
+                ],
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -99,7 +120,10 @@ class GlobalTopBar extends StatelessWidget {
                     ),
                     LevelUpBurst(
                       level: level,
-                      child: BlockText('LV $level  ▾ PROFILE',
+                      child: BlockText(
+                          EvolutionState.isCheckInDue(d)
+                              ? 'LV $level  ▾ CHECK-IN DUE'
+                              : 'LV $level  ▾ PROFILE',
                           size: 10, stroke: 2.5, color: Rb.gold),
                     ),
                   ],

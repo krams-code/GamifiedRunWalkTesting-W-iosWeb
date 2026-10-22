@@ -13,6 +13,7 @@ import '../../state/evolution_state.dart';
 import '../../utils/activity_snapshot.dart';
 import '../../utils/weekly.dart';
 import '../../widgets/block_ui.dart';
+import '../../widgets/scene_backdrop.dart';
 import '../../widgets/hero_rig.dart';
 import '../../widgets/pixel_icon.dart';
 import '../../widgets/unlock_sheet.dart';
@@ -1355,15 +1356,16 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              BlockBackground(id: s.bg),
+              const SceneBackdrop(),
               Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 4),
+                padding: EdgeInsets.only(
+                    top: 6, bottom: height * SceneBackdrop.grassFraction),
                 child: Center(
                   child: HeroRig(
                     heroId: _heroD,
                     tier: tier,
                     pose: RigPose.idle,
-                    height: height - 12,
+                    height: height * (1 - SceneBackdrop.grassFraction) - 8,
                     outfit: _outD,
                   ),
                 ),

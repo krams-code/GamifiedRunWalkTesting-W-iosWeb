@@ -233,20 +233,76 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   // ── 7-day distance chart ─────────────────────────────────────────────
+  bool _weekly = false; // false = last 7 days, true = last 8 weeks
+
   Widget _chart(List<ActivitySession> list) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final days = List.generate(7, (i) => today.subtract(Duration(days: 6 - i)));
-    final totals = days.map((d) {
-      return list
-          .where((s) =>
-              s.startTime.year == d.year &&
-              s.startTime.month == d.month &&
-              s.startTime.day == d.day)
-          .fold<double>(0, (a, s) => a + s.distanceKm);
-    }).toList();
+    double sumBetween(DateTime from, DateTime to) => list
+        .where((s) => !s.startTime.isBefore(from) && s.startTime.isBefore(to))
+        .fold<double>(0, (a, s) => a + s.distanceKm);
+
+    final List<DateTime> starts;
+    final List<double> totals;
+    final List<String> labels;
+    if (_weekly) {
+      final monday = today.subtract(Duration(days: today.weekday - 1));
+      starts = List.generate(
+          8, (i) => monday.subtract(Duration(days: 7 * (7 - i))));
+      totals = [
+        for (final d in starts) sumBetween(d, d.add(const Duration(days: 7)))
+      ];
+      labels = [for (final d in starts) '${d.month}/${d.day}'];
+    } else {
+      starts = List.generate(7, (i) => today.subtract(Duration(days: 6 - i)));
+      totals = [
+        for (final d in starts) sumBetween(d, d.add(const Duration(days: 1)))
+      ];
+      labels = [
+        for (final d in starts) DateFormat('E').format(d).substring(0, 1)
+      ];
+    }
+    final n = totals.length;
     final maxV = totals.fold<double>(0, (a, b) => b > a ? b : a);
     const chartH = 110.0;
+
+    // "this week vs last week" (Monday to Monday), shown under the chart
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final thisWeek = sumBetween(monday, monday.add(const Duration(days: 7)));
+    final lastWeek =
+        sumBetween(monday.subtract(const Duration(days: 7)), monday);
+    String trend;
+    Color trendColor = Colors.white;
+    if (lastWeek <= 0 && thisWeek <= 0) {
+      trend = 'No distance logged this week yet.';
+    } else if (lastWeek <= 0) {
+      trend = 'THIS WEEK ${thisWeek.toStringAsFixed(1)} km. First week on record!';
+      trendColor = Rb.gold;
+    } else {
+      final pct = ((thisWeek - lastWeek) / lastWeek * 100).round();
+      trend =
+          'THIS WEEK ${thisWeek.toStringAsFixed(1)} km  •  ${pct >= 0 ? '+' : ''}$pct% vs last week (${lastWeek.toStringAsFixed(1)} km)';
+      trendColor = pct >= 0 ? Rb.neon : const Color(0xFFFFB4A8);
+    }
+
+    Widget toggle(String label, bool weekly) {
+      final sel = _weekly == weekly;
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: PressBlock(
+            color: sel ? Rb.blue : Rb.slot,
+            edge: sel ? Rb.blueEdge : Rb.slateEdge,
+            depth: 3,
+            radius: 10,
+            forcePressed: sel,
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            onTap: () => setState(() => _weekly = weekly),
+            child: Center(child: BlockText(label, size: 10, stroke: 3)),
+          ),
+        ),
+      );
+    }
 
     return Block(
       color: Rb.panel,
@@ -256,14 +312,17 @@ class _ActivityScreenState extends State<ActivityScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const BlockText('📊 LAST 7 DAYS (KM)', size: 13, stroke: 3.5),
+          BlockText(_weekly ? '📊 LAST 8 WEEKS (KM)' : '📊 LAST 7 DAYS (KM)',
+              size: 13, stroke: 3.5),
+          const SizedBox(height: 8),
+          Row(children: [toggle('7 DAYS', false), toggle('8 WEEKS', true)]),
           const SizedBox(height: 10),
           SizedBox(
             height: chartH + 40,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (var i = 0; i < 7; i++)
+                for (var i = 0; i < n; i++)
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -286,18 +345,21 @@ class _ActivityScreenState extends State<ActivityScreen> {
                                 ? 4
                                 : (totals[i] / maxV * chartH).clamp(4.0, chartH),
                             decoration: BoxDecoration(
-                              color: i == 6 ? Rb.gold : Rb.green,
+                              color: i == n - 1 ? Rb.gold : Rb.green,
                               border:
                                   Border.all(color: Colors.black, width: 3),
                               borderRadius: BorderRadius.circular(6),
                             ),
                           ),
                           const SizedBox(height: 6),
-                          BlockText(
-                            DateFormat('E').format(days[i]).substring(0, 1),
-                            size: 11,
-                            stroke: 3,
-                            color: i == 6 ? Rb.gold : Colors.white,
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: BlockText(
+                              labels[i],
+                              size: 11,
+                              stroke: 3,
+                              color: i == n - 1 ? Rb.gold : Colors.white,
+                            ),
                           ),
                         ],
                       ),
@@ -306,6 +368,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 8),
+          BlockText(trend, size: 10, stroke: 2.5, color: trendColor),
         ],
       ),
     );

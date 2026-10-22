@@ -3,14 +3,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:hakbanghero/models/activity_model.dart';
+import 'package:hakbanghero/models/badge_definitions.dart';
 
 import '../../state/evolution_state.dart';
 import '../../utils/player_stats.dart';
 import '../../utils/xp_milestones.dart';
 import '../../widgets/avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
 import '../../widgets/avatar_preview.dart';
+import '../../widgets/badges_panel.dart';
 import '../../widgets/block_inputs.dart' show blockSnack;
 import '../../widgets/block_ui.dart';
+import '../../widgets/scene_backdrop.dart';
 import '../../widgets/evolution_checkin_dialog.dart';
 import '../../widgets/unlock_sheet.dart';
 import '../../widgets/weight_history_card.dart';
@@ -37,6 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   FitnessStats? _fit;
   bool _loading = true;
   int _tab = 0; // 0 = STATS, 1 = RECORDS
+  List<ActivitySession> _runs = const [];
 
   @override
   void initState() {
@@ -71,6 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _user = data;
+        _runs = sessions;
         _fit = FitnessStats.compute(
           sessions,
           weightKg: (data['weight_kg'] as num?)?.toDouble(),
@@ -146,11 +151,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               _header(),
               const SizedBox(height: 14),
-              _heroCard(name, lv.level),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: _heroCard(name, lv.level),
+                ),
+              ),
               const SizedBox(height: 14),
               _expRail(lv),
               const SizedBox(height: 14),
               _currencyRow(),
+              const SizedBox(height: 14),
+              _badgesCard(fit),
               const SizedBox(height: 14),
               _tabs(),
               const SizedBox(height: 14),
@@ -243,6 +255,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
+                // sunny meadow by day, moonlit by night (real clock)
+                const SceneBackdrop(),
                 // pixel-sharp: ~0.5x of the 560px world
                 Padding(
                   padding: const EdgeInsets.only(top: 14, bottom: 42),
@@ -276,10 +290,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   alignment: Alignment.bottomCenter,
                   child: Container(
                     height: 38,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF5BBF5B),
-                      border: Border(top: BorderSide(color: Colors.black, width: 3)),
-                    ),
+                    // the picture already has its own grass strip
+                    decoration: const BoxDecoration(color: Colors.transparent),
                     alignment: Alignment.center,
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
@@ -410,6 +422,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // ── tabs ─────────────────────────────────────────────────────────────
+  BadgeStats _badgeStats(FitnessStats f) => BadgeStats.from(
+        user: _user,
+        runs: _runs,
+        longestRunKm: f.longestRunKm,
+        bestPaceSecsPerKm: f.bestPaceSecsPerKm,
+        longestStreakDays: f.longestStreakDays,
+      );
+
+  Widget _badgesCard(FitnessStats f) =>
+      BadgesPreviewCard(stats: _badgeStats(f));
+
   Widget _tabs() {
     Widget tab(int i, String label) {
       final sel = _tab == i;
@@ -424,7 +447,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             forcePressed: sel,
             padding: const EdgeInsets.symmetric(vertical: 12),
             onTap: () => setState(() => _tab = i),
-            child: Center(child: BlockText(label, size: 13, stroke: 3.5)),
+            child: Center(
+                child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: BlockText(label, size: 13, stroke: 3.5))),
           ),
         ),
       );

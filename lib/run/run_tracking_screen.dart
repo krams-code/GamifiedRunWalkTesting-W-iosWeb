@@ -515,6 +515,11 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
         final st = pos.accuracy > 35 ? 2 : 3;
         if (st != _gpsStatus) setState(() => _gpsStatus = st);
 
+        // Anti-cheat: points from a mock-location app are ignored completely,
+        // and so are points too inaccurate to trust (> 50 m).
+        if (pos.isMocked) return;
+        if (pos.accuracy > 50) return;
+
         final speedKmh =
             (pos.speed * 3.6).clamp(0.0, 60.0);
 
