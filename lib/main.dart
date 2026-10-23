@@ -68,10 +68,17 @@ class HakbangHeroApp extends StatelessWidget {
           Sound.I.userGesture();
           Presence.I.touch();
         },
-        child: child,
+        // "TEST" ribbon: this build uses the separate test Firebase project.
+        child: Banner(
+          message: kFirebaseEnv,
+          location: BannerLocation.topStart,
+          color: const Color(0xFFFF8C00),
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
       theme: ThemeData(
         brightness: Brightness.dark,
+        fontFamily: 'Nunito', // bundled, see pubspec.yaml (BlockText uses Lilita One)
         scaffoldBackgroundColor: const Color(0xFF060C06),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00FF41),

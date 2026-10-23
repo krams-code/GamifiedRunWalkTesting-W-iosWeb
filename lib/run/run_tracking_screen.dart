@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' hide ActivityType;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -329,6 +331,100 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
     }
   }
 
+  /// OPEN SETTINGS / HOW TO TURN ON.
+  /// Phone app: jumps to the right settings page (iOS only allows the app's
+  /// own page). Web (incl. iPhone Safari): a website can't open settings, so
+  /// show step-by-step instructions instead of a button that does nothing.
+  Future<void> _openLocationSettings(BuildContext ctx) async {
+    if (!kIsWeb) {
+      var opened = false;
+      try {
+        opened = (_permIssue == 'service' &&
+                defaultTargetPlatform == TargetPlatform.android)
+            ? await Geolocator.openLocationSettings()
+            : await Geolocator.openAppSettings();
+      } catch (_) {}
+      if (opened) return;
+    }
+    if (!ctx.mounted) return;
+
+    final ios = defaultTargetPlatform == TargetPlatform.iOS;
+    final steps = _permIssue == 'service'
+        ? (ios
+            ? '1. Open the Settings app.\n'
+                '2. Privacy & Security → Location Services.\n'
+                '3. Turn Location Services ON.\n'
+                '4. Come back and tap TRY AGAIN.'
+            : '1. Swipe down from the top of the screen.\n'
+                '2. Turn Location ON.\n'
+                '3. Come back and tap TRY AGAIN.')
+        : kIsWeb
+            ? (ios
+                ? '1. Open the Settings app.\n'
+                    '2. Privacy & Security → Location Services.\n'
+                    '3. Tap "Safari Websites" → choose "While Using the App".\n'
+                    '4. In Safari, tap "aA" next to the address → Website '
+                    'Settings → Location → Allow.\n'
+                    '5. Come back and tap TRY AGAIN.'
+                : '1. Tap the lock / settings icon next to the web address.\n'
+                    '2. Permissions → Location → Allow.\n'
+                    '3. Come back and tap TRY AGAIN.')
+            : (ios
+                ? '1. Open the Settings app.\n'
+                    '2. Scroll down and tap HakbangHero.\n'
+                    '3. Location → "While Using the App".\n'
+                    '4. Come back and tap TRY AGAIN.'
+                : '1. Open Settings → Apps → HakbangHero.\n'
+                    '2. Permissions → Location → Allow.\n'
+                    '3. Come back and tap TRY AGAIN.');
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (c) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: Block(
+          color: Rb.slate,
+          edge: Rb.slateEdge,
+          depth: 6,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const BlockText('TURN ON LOCATION',
+                  size: 18, stroke: 4, align: TextAlign.center),
+              const SizedBox(height: 10),
+              Text(
+                steps,
+                style: const TextStyle(
+                  color: Color(0xFFD7DADD),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 12),
+              PressBlock(
+                color: Rb.blue,
+                edge: Rb.blueEdge,
+                depth: 5,
+                radius: 12,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                onTap: () => Navigator.of(c).pop(),
+                child: const SizedBox(
+                  width: double.infinity,
+                  child: Center(
+                      child: BlockText('GOT IT', size: 14, stroke: 3.5)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Location is unavailable. Never leave the player stuck: ask what to do.
   Future<void> _onLocationBlocked() async {
     if (!mounted) return;
@@ -390,11 +486,10 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
               const SizedBox(height: 6),
               btn('RUN WITHOUT GPS', Rb.green, Rb.greenEdge, 'nogps'),
               btn('TRY AGAIN', Rb.blue, Rb.blueEdge, 'retry'),
-              if (forever)
-                btn('OPEN SETTINGS', Rb.gold, Rb.goldEdge, 'settings',
-                    onTap: () {
-                  Geolocator.openAppSettings(); // no-op on web
-                }),
+              if (forever || _permIssue == 'service')
+                btn(kIsWeb ? 'HOW TO TURN ON' : 'OPEN SETTINGS', Rb.gold,
+                    Rb.goldEdge, 'settings',
+                    onTap: () => _openLocationSettings(ctx)),
               btn('BACK', const Color(0xFF6B7078), const Color(0xFF1B1D20),
                   'back'),
             ],

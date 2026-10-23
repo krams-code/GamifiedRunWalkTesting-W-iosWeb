@@ -12,7 +12,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     ...
     <application
-        android:label="HakbangHero"
+        android:label="HakbangHero TEST"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <service android:name="com.baseflow.geolocator.GeolocatorService"

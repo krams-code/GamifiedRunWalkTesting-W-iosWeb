@@ -90,6 +90,9 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   String _tab = 'featured';
   String _query = '';
   final TextEditingController _searchCtl = TextEditingController();
+  // While searching on a phone, the preview panel is hidden so the search box
+  // sits at the top and the keyboard can't cover it.
+  final FocusNode _searchFocus = FocusNode();
   ActivitySnapshot _act = const ActivitySnapshot();
   bool _claiming = false;
   bool _buying = false;
@@ -102,6 +105,9 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   @override
   void initState() {
     super.initState();
+    _searchFocus.addListener(() {
+      if (mounted) setState(() {});
+    });
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       ActivitySnapshot.load(uid).then((a) {
@@ -113,6 +119,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
   @override
   void dispose() {
     _searchCtl.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -329,7 +336,39 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
+  // ── ONE ITEM AT A TIME ──
+  // The shop sells one thing per purchase. Owned gear can be mixed freely,
+  // but trying on something NOT owned puts back any other not-owned thing
+  // you were previewing, so BUY is always for exactly one item or hero.
+
+  /// Puts every not-owned item in the draft back to the saved look.
+  /// Returns the names of what was taken off.
+  List<String> _dropUnownedItems(_Data s, {String? exceptSlot}) {
+    final dropped = <String>[];
+    final next = Map<String, String>.of(_outD);
+    for (final e in _outD.entries) {
+      if (e.key == exceptSlot) continue;
+      final it = heroItemById(e.value);
+      if (it == null || _ownedItem(it, s)) continue;
+      dropped.add(it.name);
+      final saved = s.outfit[e.key];
+      if (saved != null) {
+        next[e.key] = saved;
+      } else {
+        next.remove(e.key);
+      }
+    }
+    _outD = next;
+    return dropped;
+  }
+
+  void _oneAtATimeNotice(List<String> dropped) {
+    if (dropped.isEmpty) return;
+    _snack('One item at a time: took off ${dropped.join(', ')}');
+  }
+
   void _onItemTap(HeroItem item, _Data s) {
+    _searchFocus.unfocus(); // show the preview again with the item on
     if (heroIsCostume(_heroD)) {
       if (_ruleLockedItem(item, s)) {
         _openItemSheet(item, s);
@@ -341,20 +380,36 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     if (_ruleLockedItem(item, s)) {
       _openItemSheet(item, s); // how to unlock it (you can still try it on)
     }
+    final dropped = <String>[];
     setState(() {
       if (_outD[item.slot.name] == item.id) {
         _outD = Map<String, String>.of(_outD)..remove(item.slot.name);
       } else {
+        if (!_ownedItem(item, s)) {
+          dropped.addAll(_dropUnownedItems(s, exceptSlot: item.slot.name));
+          final h = heroById(_heroD);
+          if (h != null && !_ownedHero(h, s)) {
+            dropped.add(h.name);
+            _heroD = heroIsCostume(s.heroId) ? kDefaultHeroId : s.heroId;
+          }
+        }
         _outD = Map<String, String>.of(_outD)..[item.slot.name] = item.id;
       }
     });
+    _oneAtATimeNotice(dropped);
   }
 
   void _onHeroTap(HeroDef h, _Data s) {
+    _searchFocus.unfocus();
     if (_ruleLockedHero(h, s)) {
       _openHeroSheet(h, s); // how to unlock it (you can still look at it)
     }
-    setState(() => _heroD = h.id);
+    final dropped = <String>[];
+    setState(() {
+      if (!_ownedHero(h, s)) dropped.addAll(_dropUnownedItems(s));
+      _heroD = h.id;
+    });
+    _oneAtATimeNotice(dropped);
   }
 
   Future<void> _purchase(String uid) async {
@@ -489,14 +544,17 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
         );
       }
 
+      final searching = _searchFocus.hasFocus;
       return Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
         child: Column(
           children: [
-            _buildHeader(s),
-            const SizedBox(height: 8),
-            _buildPreviewPanel(s, uid, tier, wide: false),
-            const SizedBox(height: 4),
+            if (!searching) ...[
+              _buildHeader(s),
+              const SizedBox(height: 8),
+              _buildPreviewPanel(s, uid, tier, wide: false),
+              const SizedBox(height: 4),
+            ],
             Expanded(child: browse),
           ],
         ),
@@ -565,23 +623,39 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
           Expanded(
             child: TextField(
               controller: _searchCtl,
+              focusNode: _searchFocus,
               onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+              onSubmitted: (_) => _searchFocus.unfocus(),
+              textInputAction: TextInputAction.search,
+              autocorrect: false,
+              textAlignVertical: TextAlignVertical.center,
               style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  height: 1.2),
               cursorColor: Rb.neon,
               decoration: const InputDecoration(
-                isCollapsed: true,
+                isDense: true,
+                filled: false,
+                contentPadding: EdgeInsets.symmetric(vertical: 6),
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
                 hintText: 'Search costumes and items',
-                hintStyle: TextStyle(color: Colors.white38, fontWeight: FontWeight.w800),
+                hintStyle: TextStyle(
+                    color: Colors.white38,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14),
               ),
             ),
           ),
-          if (_query.isNotEmpty)
+          if (_query.isNotEmpty || _searchFocus.hasFocus)
             GestureDetector(
               onTap: () => setState(() {
                 _query = '';
                 _searchCtl.clear();
+                _searchFocus.unfocus();
               }),
               child: const Icon(Icons.close, color: Colors.white70, size: 18),
             ),
@@ -1238,6 +1312,16 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
+  /// Name of the one not-owned thing in the draft (what BUY pays for).
+  String? _buyingName(_Data s) {
+    final h = heroById(_heroD);
+    if (h != null && !_ownedHero(h, s)) return h.name;
+    for (final i in _draftItems()) {
+      if (!_ownedItem(i, s)) return i.name;
+    }
+    return null;
+  }
+
   String _costText(int c) => c > 0 ? '${_fmt(c)} \u{1FA99}' : '0';
 
   Widget _buildActionRow(_Data s, String uid) {
@@ -1283,7 +1367,8 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
       onTap = () => _askThenSave(uid, s);
     } else {
       label = 'BUY';
-      sub = _costText(cost);
+      final what = _buyingName(s);
+      sub = what == null ? _costText(cost) : '$what • ${_costText(cost)}';
       onTap = () => _askThenSave(uid, s);
     }
 

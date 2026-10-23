@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hakbanghero</string>
+	<string>HakbangHero TEST</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,6 +24,34 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Location: needed for GPS run tracking (iOS shows these texts in the permission popup) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>HakbangHero uses your location to track the distance and speed of your runs and walks.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>HakbangHero keeps tracking your run while the screen is off or the app is in the background.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>HakbangHero keeps tracking your run while the screen is off or the app is in the background.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>HakbangHero uses motion data to count your steps.</string>
+	<!-- Keep GPS + challenge alarm sound running when the screen locks mid-run -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>audio</string>
+	</array>
+	<!-- Google sign-in on iPhone returns to the app through these links -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app-1-343069157882-ios-e09887f5c549b826871c43</string>
+				<string>com.googleusercontent.apps.343069157882-ot313jurj45mq0ue63pu2n61u9i7prj2</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
