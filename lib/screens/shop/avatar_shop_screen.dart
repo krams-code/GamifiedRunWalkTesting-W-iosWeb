@@ -707,25 +707,161 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
 
   // ───────────────────────── content ─────────────────────────
 
+  // ── search ──
+  // Searches EVERY category (whatever tab is open). Case, spaces and symbols
+  // are ignored, so even one letter lists everything that contains it.
+  // Best matches first:
+  //   whole name > name starts with it > a word starts with it >
+  //   anywhere in the name > category / rarity / price words > letters in
+  //   order (typo-friendly, "rdcp" finds Red Cap).
+  // Several words ("gold head") must ALL match.
+
+  static String _norm(String v) =>
+      v.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  static int _scoreWord(String q, String name, List<String> tags) {
+    final n = _norm(name);
+    if (q.isEmpty || n.isEmpty) return 0;
+    if (n == q) return 1000;
+    if (n.startsWith(q)) return 900 - n.length;
+    final words = name
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((w) => w.isNotEmpty);
+    if (words.any((w) => w.startsWith(q))) return 800 - n.length;
+    final at = n.indexOf(q);
+    if (at >= 0) return 700 - at * 5 - n.length;
+    // one letter: names only (every category word would match otherwise)
+    if (q.length < 2) return 0;
+    for (final t in tags) {
+      if (_norm(t).contains(q)) return 500;
+    }
+    if (q.length >= 2) {
+      var i = 0;
+      for (var k = 0; k < n.length && i < q.length; k++) {
+        if (n[k] == q[i]) i++;
+      }
+      if (i == q.length) return 300 - n.length;
+    }
+    return 0;
+  }
+
+  /// 0 = no match. Every word of the query has to match something.
+  static int _score(String query, String name, List<String> tags) {
+    final words = query
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .map(_norm)
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return 0;
+    var total = 0;
+    for (final w in words) {
+      final sc = _scoreWord(w, name, tags);
+      if (sc == 0) return 0;
+      total += sc;
+    }
+    return total;
+  }
+
+  List<String> _itemTags(HeroItem i) {
+    final r = _rarity(i.rarity).label;
+    final tab = _tabs.where((t) => t.slot == i.slot);
+    return [
+      i.slot.label,
+      if (tab.isNotEmpty) tab.first.label,
+      r,
+      if (r == 'LEGEND') 'legendary',
+      'item',
+      _priceText(i),
+      if (i.rule.label != null) i.rule.label!,
+    ];
+  }
+
+  List<String> _heroTags(HeroDef h) => [
+        'hero',
+        'heroes',
+        h.costume ? 'costume' : 'main hero',
+        h.rarityLabel,
+        h.tagline,
+        if (h.coinPrice > 0) '${h.coinPrice}' else (h.starter ? 'free' : 'earn'),
+      ];
+
   Widget _buildContent(_Data s, BodyTier tier) {
     if (_query.isNotEmpty) {
-      final heroes = (_tab == 'featured' || _tab == 'heroes')
-          ? kHeroes.where((h) => h.name.toLowerCase().contains(_query)).toList()
-          : <HeroDef>[];
-      final items = kHeroItems
-          .where((i) =>
-              i.name.toLowerCase().contains(_query) &&
-              (_tab == 'featured' || _tab == 'heroes' || _tab == i.slot.name))
-          .toList();
-      if (heroes.isEmpty && items.isEmpty) {
-        return const Center(child: BlockText('NOTHING FOUND', size: 14, stroke: 3.5));
+      final hs = <(HeroDef, int)>[
+        for (final h in kHeroes)
+          if (_score(_query, h.name, _heroTags(h)) case final sc when sc > 0)
+            (h, sc),
+      ]..sort((a, b) => b.$2.compareTo(a.$2));
+      final its = <(HeroItem, int)>[
+        for (final i in kHeroItems)
+          if (_score(_query, i.name, _itemTags(i)) case final sc when sc > 0)
+            (i, sc),
+      ]..sort((a, b) {
+          final c = b.$2.compareTo(a.$2);
+          return c != 0 ? c : a.$1.coins.compareTo(b.$1.coins);
+        });
+      final total = hs.length + its.length;
+      if (total == 0) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: BlockText('NOTHING FOUND FOR "${_query.toUpperCase()}"',
+                size: 14, stroke: 3.5, align: TextAlign.center),
+          ),
+        );
       }
-      return _buildGrid(s, tier, heroes: heroes, items: items);
+      // the better matches come first, heroes or items
+      final heroesFirst =
+          hs.isNotEmpty && (its.isEmpty || hs.first.$2 >= its.first.$2);
+      final heroes = [for (final e in hs) e.$1];
+      final items = [for (final e in its) e.$1];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 6),
+            child: BlockText(
+              '$total RESULT${total == 1 ? '' : 'S'} FOR "${_query.toUpperCase()}"  •  ALL CATEGORIES',
+              size: 10.5,
+              stroke: 2.5,
+              color: const Color(0xFFB8BDC4),
+            ),
+          ),
+          Expanded(
+            child: heroesFirst
+                ? _buildGrid(s, tier, heroes: heroes, items: items)
+                : _buildMixedGrid(s, tier, items: items, heroes: heroes),
+          ),
+        ],
+      );
     }
     if (_tab == 'featured') return _buildFeatured(s, tier);
     if (_tab == 'heroes') return _buildGrid(s, tier, heroes: kHeroes, items: const []);
     final slot = _tabs.firstWhere((t) => t.key == _tab).slot!;
     return _buildGrid(s, tier, heroes: const [], items: heroItemsIn(slot));
+  }
+
+  /// Same grid, items before heroes (when an item is the best match).
+  Widget _buildMixedGrid(_Data s, BodyTier tier,
+      {required List<HeroItem> items, required List<HeroDef> heroes}) {
+    return LayoutBuilder(builder: (context, c) {
+      final cols = (c.maxWidth / 130).floor().clamp(3, 6);
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(2, 4, 2, 16),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: cols,
+          crossAxisSpacing: 9,
+          mainAxisSpacing: 6,
+          childAspectRatio: 0.7,
+        ),
+        itemCount: items.length + heroes.length,
+        itemBuilder: (context, i) => i < items.length
+            ? _itemTile(items[i], s, tier)
+            : _heroTile(heroes[i - items.length], s, tier),
+      );
+    });
   }
 
   Widget _buildGrid(_Data s, BodyTier tier,

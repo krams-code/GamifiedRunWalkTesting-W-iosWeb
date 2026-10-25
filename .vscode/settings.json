@@ -1,3 +1,8 @@
 {
-    "FSharp.suggestGitignore": false
+    "FSharp.suggestGitignore": false,
+    "dart.flutterSdkPath": "C:\\flutter",
+    "terminal.integrated.env.windows": {
+        "PATH": "C:\\flutter\\bin;${env:PATH}",
+        "PUB_CACHE": "C:\\pub-cache"
+    }
 }
