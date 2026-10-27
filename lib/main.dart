@@ -26,7 +26,12 @@ void main() async {
     // finished on weak signal still uploads after a reload.
     try {
       FirebaseFirestore.instance.settings =
-          const Settings(persistenceEnabled: true);
+          const Settings(
+        persistenceEnabled: true,
+        // Safari / some networks block the normal live channel, so updates
+        // (coins after buying...) arrived minutes late. Fall back when needed.
+        webExperimentalAutoDetectLongPolling: true,
+      );
     } catch (_) {}
   }
   // Sound is optional: never let it hold up the app.

@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/reward_popup.dart';
+import '../../services/sound.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -108,7 +110,16 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
           'hero_id': h.id,
         });
       });
-      _snack('\u{1F389} ${h.name} unlocked!');
+      if (mounted) {
+        await showRewardPopup(context,
+            emoji: '\u{1F389}',
+            title: 'HERO UNLOCKED!',
+            subtitle: '${h.name} joins your team.',
+            fx: Fx.unlockBurst,
+            sound: Sfx.unlock,
+            color: const Color(0xFF5B3A9E),
+            edge: const Color(0xFF2A1A52));
+      }
     } catch (e) {
       debugPrint('hero buy failed: $e');
       _snack(e == 'coins' ? 'Not enough \u{1FA99} coins.' : saveErrorText(e, 'Purchase failed. Try again.'));

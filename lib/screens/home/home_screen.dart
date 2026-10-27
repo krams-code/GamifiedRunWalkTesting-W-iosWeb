@@ -6,9 +6,11 @@ import '../../models/daily_quest_definitions.dart';
 import '../../widgets/avatar_layer_stack.dart' show kSpriteWidth, kSpriteHeight;
 import '../../widgets/avatar_preview.dart';
 import '../../utils/xp_milestones.dart';
+import '../../utils/player_stats.dart' show LevelProgress;
 import '../../widgets/block_ui.dart';
 import '../../widgets/emoji_icons.dart';
 import '../../state/user_doc.dart';
+import '../../widgets/verify_email_banner.dart';
 import '../../widgets/lottie_fx.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -118,13 +120,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final username = data['username'] as String? ??
               FirebaseAuth.instance.currentUser?.displayName ??
               'Hero';
-          final level    = (data['level'] as num?)?.toInt() ?? 1;
           final xp       = (data['xp'] as num?)?.toInt() ?? 0;
+          // the level always comes from XP (same maths as the top bar)
+          final lp       = LevelProgress.fromXp(xp);
+          final level    = lp.level;
           final totalKm  = (data['total_km'] as num?)?.toDouble() ?? 0.0;
           final sessions = (data['total_sessions'] as num?)?.toInt() ?? 0;
 
-          final xpForNext  = level * 500;
-          final xpProgress = (xp % xpForNext) / xpForNext;
+          // total XP at which the next level starts
+          final xpForNext  = xp - lp.xpIntoLevel + lp.xpNeeded;
+          final xpProgress = lp.fraction;
           final stage      = _stageFromKm(totalKm);
 
           final todayStr   = _todayDateString();
@@ -158,6 +163,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       xpProgress: xpProgress,
                     ),
                     const SizedBox(height: 16),
+                    const VerifyEmailBanner(),
                     _buildStageHeader(stage),
                     const SizedBox(height: 12),
                     _buildPortal(stage: stage, data: data),
@@ -647,7 +653,10 @@ class _QuestSlot extends StatelessWidget {
     final kmText =
         '${dailyKm.toStringAsFixed(2)} / ${quest.thresholdKm.toStringAsFixed(1)} km';
 
-    return Block(
+    // a claimed quest is greyed out
+    return Opacity(
+      opacity: claimed ? 0.6 : 1,
+      child: Block(
       color: Rb.slot,
       edge: Rb.slateEdge,
       depth: 4,
@@ -666,9 +675,9 @@ class _QuestSlot extends StatelessWidget {
               width: 44,
               height: 44,
               child: Center(
-                child: claimed
-                    ? const Icon(Icons.check, color: Colors.white, size: 24)
-                    : Icon(quest.icon, color: Colors.white, size: 24),
+                child: Icon(quest.icon,
+                    color: claimed ? const Color(0xFFA9AEB4) : Colors.white,
+                    size: 24),
               ),
             ),
           ),
@@ -691,7 +700,7 @@ class _QuestSlot extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       child: BlockText(
                         claimed
-                            ? '✓ ${quest.coinReward} 🪙'
+                            ? 'CLAIMED'
                             : '+${quest.coinReward} 🪙',
                         size: 10,
                         stroke: 2.5,
@@ -728,6 +737,7 @@ class _QuestSlot extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }
