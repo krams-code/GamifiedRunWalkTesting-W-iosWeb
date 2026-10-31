@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'emoji_icons.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -173,7 +174,7 @@ class _FriendsWeekCardState extends State<FriendsWeekCard> {
                     if (r.ranToday)
                       const Padding(
                         padding: EdgeInsets.only(left: 4),
-                        child: Text('\u{1F525}', style: TextStyle(fontSize: 11)),
+                        child: EmojiText('\u{1F525}', style: TextStyle(fontSize: 11)),
                       ),
                   ],
                 ),

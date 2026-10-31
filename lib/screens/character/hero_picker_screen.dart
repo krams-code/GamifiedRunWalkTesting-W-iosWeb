@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/game_notice.dart';
 import '../../widgets/reward_popup.dart';
 import '../../services/sound.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -65,10 +66,7 @@ class _HeroPickerScreenState extends State<HeroPickerScreen> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-          SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+    showGameNotice(context, msg);
   }
 
   Future<void> _choose(HeroDef h) async {

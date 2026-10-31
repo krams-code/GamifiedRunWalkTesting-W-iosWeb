@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/sound.dart';
+import '../../widgets/reward_popup.dart';
 import 'package:hakbanghero/services/private_data.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -105,20 +107,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Your next check-in opens in ${EvolutionState.timeLeftLabel(_user)}. '
             'You update your weight once a week, so your progress is fair for everyone. '
             "We'll remind you when it's time!",
-        art: const Center(child: Text('\u2696\uFE0F', style: TextStyle(fontSize: 46))),
+        art: const Center(child: EmojiText('\u2696\uFE0F', style: TextStyle(fontSize: 46))),
       );
       return;
     }
     final r = await showEvolutionCheckIn(context);
     if (!mounted || r == null) return;
     _load();
-    blockSnack(
-      context,
-      r.improved
-          ? '🔥 EVOLVED INTO ${r.after.label.toUpperCase()}!'
-              '${r.enduranceAwarded ? '  +${EvolutionState.enduranceBonus} ENDURANCE' : ''}'
-          : '💾 Check-in saved: ${r.after.label}',
-    );
+    showRewardPopup(
+        context,
+        emoji: r.improved ? '\u{1F525}' : '\u{1F4BE}',
+        title: r.improved
+            ? 'EVOLVED INTO ${r.after.label.toUpperCase()}!'
+            : 'CHECK-IN SAVED',
+        subtitle: r.improved
+            ? 'Your hero changed with your progress.'
+                '${r.enduranceAwarded ? '\n+${EvolutionState.enduranceBonus} ENDURANCE' : ''}'
+            : 'Body form: ${r.after.label}. See you next week!',
+        fx: r.improved ? Fx.levelBurst : Fx.coinSpin,
+        sound: r.improved ? Sfx.levelUp : Sfx.coin,
+        color: const Color(0xFF8A5A00),
+        edge: const Color(0xFF3A2600),
+      );
   }
 
   Future<void> _pickHero() async {

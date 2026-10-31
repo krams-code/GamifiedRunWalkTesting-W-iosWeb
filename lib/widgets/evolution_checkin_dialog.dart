@@ -781,8 +781,12 @@ class _EvoCard extends StatelessWidget {
                           equippedClothes: clothes,
                           height: 150,
                           gender: p.gender,
-                          heroId: heroIdOf(data),
-                          outfit: outfitOf(data),
+                          // Always the main hero (SPROUT / SPROUT GIRL by
+                          // gender) with no gear, even when a costume is
+                          // worn, so the body-size change is easy to see.
+                          // The player's own look is untouched.
+                          heroId: kDefaultHeroId,
+                          outfit: const <String, String>{},
                         ),
                       ),
               ),

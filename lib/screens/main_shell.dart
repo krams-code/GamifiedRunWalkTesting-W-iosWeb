@@ -1,4 +1,5 @@
 import '../services/sound.dart';
+import '../widgets/lottie_fx.dart' show Fx;
 import '../widgets/reward_popup.dart';
 import 'package:hakbanghero/services/usernames.dart';
 import 'package:hakbanghero/services/private_data.dart';
@@ -161,12 +162,20 @@ class _MainShellState extends State<MainShell> {
       if (!mounted) return;
       final r = await showEvolutionCheckIn(context);
       if (!mounted || r == null) return;
-      blockSnack(
+      showRewardPopup(
         context,
-        r.improved
-            ? '\u{1F525} EVOLVED INTO ${r.after.label.toUpperCase()}!'
-                '${r.enduranceAwarded ? '  +${EvolutionState.enduranceBonus} ENDURANCE' : ''}'
-            : '\u{1F4BE} Check-in saved: ${r.after.label}',
+        emoji: r.improved ? '\u{1F525}' : '\u{1F4BE}',
+        title: r.improved
+            ? 'EVOLVED INTO ${r.after.label.toUpperCase()}!'
+            : 'CHECK-IN SAVED',
+        subtitle: r.improved
+            ? 'Your hero changed with your progress.'
+                '${r.enduranceAwarded ? '\n+${EvolutionState.enduranceBonus} ENDURANCE' : ''}'
+            : 'Body form: ${r.after.label}. See you next week!',
+        fx: r.improved ? Fx.levelBurst : Fx.coinSpin,
+        sound: r.improved ? Sfx.levelUp : Sfx.coin,
+        color: const Color(0xFF8A5A00),
+        edge: const Color(0xFF3A2600),
       );
     } catch (_) {
       // never block the app on the check-in

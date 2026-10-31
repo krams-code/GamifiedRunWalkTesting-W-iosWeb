@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../utils/rewards.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -72,6 +73,46 @@ class RunPayload {
         'elapsedSeconds': elapsedSeconds,
         'interval': interval,
       };
+
+  /// Same run with XP / coins worked out again by today's reward formula
+  /// (bonuses dropped). Used when the server refuses a run recorded by an
+  /// older app version whose numbers today's rules no longer accept.
+  RunPayload withRecomputedRewards() {
+    final km = (fields['distanceKm'] as num?)?.toDouble() ?? 0;
+    final active = (fields['activeSeconds'] as num?)?.toInt() ??
+        (fields['durationSeconds'] as num?)?.toInt() ??
+        0;
+    final mult = rewardMult.clamp(0.0, RunRewards.maxMult).toDouble();
+    final xp2 = RunRewards.xp(km: km, activeSeconds: active, mult: mult);
+    final coins2 = RunRewards.coins(km: km, mult: mult);
+    return RunPayload(
+      id: id,
+      uid: uid,
+      modeId: modeId,
+      outcome: outcome,
+      good: false,
+      rewardMult: mult,
+      fields: {...fields, 'xpEarned': xp2, 'coinsEarned': coins2},
+      challenges: const [],
+      ghost: null,
+      xp: xp2,
+      coins: coins2,
+      bonusCoins: 0,
+      lootChests: 0,
+      elapsedSeconds: elapsedSeconds,
+      interval: interval,
+    );
+  }
+
+  /// "Oct 24 • 3.21 km" for messages about this run.
+  String get label {
+    final ms = (fields['startTime'] as num?)?.toInt();
+    final km = (fields['distanceKm'] as num?)?.toDouble() ?? 0;
+    if (ms == null) return '${km.toStringAsFixed(2)} km';
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${m[d.month - 1]} ${d.day} \u2022 ${km.toStringAsFixed(2)} km';
+  }
 
   factory RunPayload.fromJson(Map<String, dynamic> j) => RunPayload(
         id: j['id'] as String,
@@ -210,6 +251,73 @@ abstract final class RunSaver {
     final same = (data['coins_today_day'] as num?)?.toInt() == day;
     final before = same ? ((data['coins_today'] as num?)?.toInt() ?? 0) : 0;
     return {'coins_today': before + addCoins, 'coins_today_day': day};
+  }
+
+  /// For runs waiting in a queue. If the server refuses a run as it is (for
+  /// example it was recorded by an older app version with older reward
+  /// maths), try again with the rewards worked out by today's formula, and
+  /// as a last resort keep just the run in the history, without rewards.
+  /// Returns null when even that is refused (impossible data): the run then
+  /// leaves the queue instead of failing forever. Offline errors are thrown.
+  static Future<RunSaveResult?> saveQueued(RunPayload p) async {
+    try {
+      return await save(p).timeout(timeout);
+    } catch (e) {
+      if (!isRejected(e)) rethrow;
+      debugPrint('queued run refused as is: $e');
+    }
+    try {
+      return await save(p.withRecomputedRewards()).timeout(timeout);
+    } catch (e) {
+      if (!isRejected(e)) rethrow;
+      debugPrint('queued run refused with new rewards: $e');
+    }
+    try {
+      await saveRecordOnly(p).timeout(timeout);
+      return const RunSaveResult(late: true);
+    } catch (e) {
+      if (!isRejected(e)) rethrow;
+      debugPrint('queued run refused as a record: $e');
+    }
+    return null;
+  }
+
+  /// Keep the run in the Activity history only (no XP, coins or totals).
+  static Future<void> saveRecordOnly(RunPayload p) async {
+    final ref = FirebaseFirestore.instance
+        .collection('users')
+        .doc(p.uid)
+        .collection('activities')
+        .doc(p.id);
+    final startMs = (p.fields['startTime'] as num).toInt();
+    final endMs = (p.fields['endTime'] as num).toInt();
+    await ref.set({
+      ...p.fields,
+      'startTime': Timestamp.fromMillisecondsSinceEpoch(startMs),
+      'endTime': Timestamp.fromMillisecondsSinceEpoch(endMs),
+      'routePoints': simplifyRoute(_route(p.fields['routePoints'])),
+      'xpEarned': 0,
+      'coinsEarned': 0,
+      'mode': p.modeId,
+      'no_rewards': true,
+    });
+  }
+
+  /// Plain-language reason for the sync window.
+  static String friendly(String? err) {
+    if (err == null || err.isEmpty) return '';
+    if (err.startsWith('permission-denied')) {
+      return 'The server refused these runs as they are. Tap SYNC NOW: each '
+          'one is checked again with today\'s reward rules, and if it still '
+          'can\'t be counted it is kept in your history without rewards.';
+    }
+    if (err.startsWith('timeout') ||
+        err.startsWith('unavailable') ||
+        err.startsWith('deadline')) {
+      return 'No connection to the server right now. They send by '
+          'themselves when you are back online.';
+    }
+    return err;
   }
 
   static Future<RunSaveResult> save(RunPayload p) async {
@@ -431,9 +539,14 @@ abstract final class RunCloud {
       try {
         final p = RunPayload.fromJson(Map<String, dynamic>.from(d.data()));
         if (p.uid != uid) continue;
-        await RunSaver.save(p).timeout(RunSaver.timeout);
+        final r = await RunSaver.saveQueued(p);
         await done(uid, d.id);
-        sent++;
+        if (r == null) {
+          RunOutbox.note('${p.label}: data not possible for a run, removed.');
+        } else {
+          if (r.late) RunOutbox.note('${p.label}: kept in history, no rewards.');
+          sent++;
+        }
         RunOutbox.lastError.value = null;
       } catch (e) {
         debugPrint('pending_runs save: $e');
@@ -473,6 +586,11 @@ abstract final class RunOutbox {
 
   /// Why the last send failed (null after a successful send).
   static final ValueNotifier<String?> lastError = ValueNotifier<String?>(null);
+
+  /// What happened to runs that could not be counted normally (shown in the
+  /// sync window).
+  static final ValueNotifier<List<String>> notes = ValueNotifier<List<String>>(const []);
+  static void note(String msg) => notes.value = [...notes.value, msg];
 
   static Future<void> refresh() async {
     _count(await _load());
@@ -524,16 +642,26 @@ abstract final class RunOutbox {
     var sent = 0;
     try {
       final list = await _load();
+      // oldest first, so runs reach the server in the order they happened
+      int startOf(RunPayload p) => (p.fields['startTime'] as num?)?.toInt() ?? 0;
+      list.sort((a, b) => startOf(a).compareTo(startOf(b)));
       final left = <RunPayload>[];
+      var changed = false;
       for (final p in list) {
         if (p.uid != uid) {
           left.add(p);
           continue;
         }
         try {
-          await RunSaver.save(p).timeout(RunSaver.timeout);
+          final r = await RunSaver.saveQueued(p);
           await RunCloud.done(p.uid, p.id);
-          sent++;
+          changed = true;
+          if (r == null) {
+            note('${p.label}: data not possible for a run, removed.');
+          } else {
+            if (r.late) note('${p.label}: kept in history, no rewards.');
+            sent++;
+          }
           lastError.value = null;
         } catch (e) {
           debugPrint('RunOutbox send failed: $e');
@@ -541,7 +669,7 @@ abstract final class RunOutbox {
           left.add(p);
         }
       }
-      if (sent > 0) await _store(left);
+      if (changed) await _store(left);
       // then runs waiting in the cloud (recorded on any device)
       sent += await RunCloud.flush(uid);
       _count(await _load());

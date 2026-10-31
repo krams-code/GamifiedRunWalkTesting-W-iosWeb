@@ -372,7 +372,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(won ? '\u{1F3C6}' : '\u{1F624}', style: const TextStyle(fontSize: 56)),
+                EmojiText(won ? '\u{1F3C6}' : '\u{1F624}', style: const TextStyle(fontSize: 56)),
                 const SizedBox(height: 6),
                 BlockText(won ? 'YOU WON!' : '$_otherName WON!'.toUpperCase(),
                     size: 26, stroke: 5.5, color: won ? Rb.gold : Colors.white,
@@ -932,7 +932,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
                   const Positioned(
                     right: 0,
                     top: 0,
-                    child: Text('\u{1F3C1}', style: TextStyle(fontSize: 22)),
+                    child: EmojiText('\u{1F3C1}', style: TextStyle(fontSize: 22)),
                   ),
                   AnimatedPositioned(
                     duration: const Duration(milliseconds: 600),

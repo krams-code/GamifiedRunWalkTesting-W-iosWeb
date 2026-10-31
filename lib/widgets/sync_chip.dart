@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'emoji_icons.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -40,21 +41,18 @@ class _SyncChipState extends State<SyncChip> {
     if (uid == null || _busy) return;
     if (!silent) setState(() => _busy = true);
     try {
-      final sent = await RunOutbox.flush(uid);
-      if (!silent && mounted) {
-        final err = RunOutbox.lastError.value;
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            duration: const Duration(seconds: 6),
-            content: Text(sent > 0
-                ? '\u2705 $sent run${sent == 1 ? '' : 's'} saved!'
-                : 'Still not saved. ${err ?? ''}'),
-          ));
-      }
+      await RunOutbox.flush(uid);
     } finally {
       if (mounted && !silent) setState(() => _busy = false);
     }
+  }
+
+  /// Tap on the chip: a window that explains what is waiting and why.
+  void _open() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => const _SyncDialog(),
+    );
   }
 
   @override
@@ -71,7 +69,7 @@ class _SyncChipState extends State<SyncChip> {
             depth: 4,
             radius: 12,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            onTap: _busy ? null : _sync,
+            onTap: _busy ? null : _open,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -84,7 +82,7 @@ class _SyncChipState extends State<SyncChip> {
                         child: BlockText(
                           _busy
                               ? '\u{1F4E1} SYNCING...'
-                              : '\u{1F4E1} $n RUN${n == 1 ? '' : 'S'} WAITING TO SYNC • TAP TO RETRY',
+                              : '\u{1F4E1} $n RUN${n == 1 ? '' : 'S'} WAITING TO SYNC • TAP FOR DETAILS',
                           size: 11,
                           stroke: 3,
                           align: TextAlign.center,
@@ -116,6 +114,161 @@ class _SyncChipState extends State<SyncChip> {
           ),
         );
       },
+    );
+  }
+}
+
+class _SyncDialog extends StatefulWidget {
+  const _SyncDialog();
+
+  @override
+  State<_SyncDialog> createState() => _SyncDialogState();
+}
+
+class _SyncDialogState extends State<_SyncDialog> {
+  bool _busy = false;
+  String? _result;
+
+  Future<void> _syncNow() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _busy) return;
+    setState(() {
+      _busy = true;
+      _result = null;
+    });
+    RunOutbox.notes.value = const [];
+    var sent = 0;
+    try {
+      sent = await RunOutbox.flush(uid);
+    } catch (_) {}
+    if (!mounted) return;
+    final left = RunOutbox.pending.value;
+    setState(() {
+      _busy = false;
+      _result = left == 0
+          ? 'All done! ${sent > 0 ? '$sent run${sent == 1 ? '' : 's'} saved.' : ''}'
+          : '${sent > 0 ? '$sent saved, ' : ''}$left still waiting.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(20),
+      child: Block(
+        color: Rb.slate,
+        edge: Colors.black,
+        depth: 8,
+        radius: 20,
+        padding: const EdgeInsets.all(16),
+        child: ValueListenableBuilder<int>(
+          valueListenable: RunOutbox.pending,
+          builder: (_, n, __) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const EmojiText('\u{1F4E1}', style: TextStyle(fontSize: 38)),
+              const SizedBox(height: 4),
+              BlockText(
+                  n == 0
+                      ? 'EVERYTHING IS SYNCED'
+                      : '$n RUN${n == 1 ? '' : 'S'} WAITING TO SYNC',
+                  size: 18,
+                  stroke: 4.5,
+                  align: TextAlign.center),
+              const SizedBox(height: 8),
+              if (n > 0)
+                const BlockText(
+                    'These runs are safe on this phone / in your account, '
+                    'but not counted yet (XP, coins, leaderboard).',
+                    size: 11,
+                    stroke: 2.5,
+                    align: TextAlign.center),
+              ValueListenableBuilder<String?>(
+                valueListenable: RunOutbox.lastError,
+                builder: (_, err, __) => err == null || n == 0
+                    ? const SizedBox.shrink()
+                    : Container(
+                        margin: const EdgeInsets.only(top: 10),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3A2020),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.black, width: 2),
+                        ),
+                        child: Text(RunSaver.friendly(err),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Color(0xFFFFD7CF),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800)),
+                      ),
+              ),
+              ValueListenableBuilder<List<String>>(
+                valueListenable: RunOutbox.notes,
+                builder: (_, notes, __) => notes.isEmpty
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Column(children: [
+                          for (final t in notes)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text('\u2022 $t',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      color: Color(0xFFD3D5D7),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                        ]),
+                      ),
+              ),
+              if (_result != null) ...[
+                const SizedBox(height: 10),
+                BlockText(_result!,
+                    size: 13, stroke: 3, color: Rb.neon, align: TextAlign.center),
+              ],
+              const SizedBox(height: 14),
+              Row(children: [
+                Expanded(
+                  child: PressBlock(
+                    color: const Color(0xFF6B7078),
+                    edge: const Color(0xFF1B1D20),
+                    depth: 5,
+                    radius: 12,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    onTap: _busy ? null : () => Navigator.of(context).pop(),
+                    child: const Center(child: BlockText('CLOSE', size: 14, stroke: 3.5)),
+                  ),
+                ),
+                if (n > 0) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: PressBlock(
+                      color: Rb.green,
+                      edge: Rb.greenEdge,
+                      depth: 5,
+                      radius: 12,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      onTap: _busy ? null : _syncNow,
+                      child: Center(
+                        child: _busy
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 3, color: Colors.white))
+                            : const BlockText('SYNC NOW', size: 14, stroke: 3.5),
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

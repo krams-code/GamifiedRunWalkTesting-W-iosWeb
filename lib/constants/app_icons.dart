@@ -100,4 +100,32 @@ class AppIcons {
 
   /// Icon of a hero item id (see models/hero_items.dart).
   static String item(String id) => '$_d/items/item_$id.png';
+
+  // added Oct 2026 (replace the last phone emoji)
+  static const String sleep = '$_d/icon_sleep.png';
+  static const String offline = '$_d/icon_offline.png';
+  static const String lost = '$_d/icon_lost.png';
+  static const String bulb = '$_d/icon_bulb.png';
+  static const String boxEmpty = '$_d/icon_box_empty.png';
+  static const String handshake = '$_d/icon_handshake.png';
+  static const String eyeClosed = '$_d/icon_eye_closed.png';
+  static const String boy = '$_d/icon_boy.png';
+  static const String girl = '$_d/icon_girl.png';
+  static const String costume = '$_d/icon_costume.png';
+  static const String hourglass = '$_d/icon_hourglass.png';
+  static const String gear = '$_d/icon_gear.png';
+  static const String music = '$_d/icon_music.png';
+  static const String speaker = '$_d/icon_speaker.png';
+  static const String vibrate = '$_d/icon_vibrate.png';
+  static const String plus = '$_d/icon_plus.png';
+  static const String report = '$_d/icon_report.png';
+  static const String block = '$_d/icon_block.png';
+  static const String key = '$_d/icon_key.png';
+  static const String stop = '$_d/icon_stop.png';
+  static const String satellite = '$_d/icon_satellite.png';
+  static const String clock = '$_d/icon_clock.png';
+  static const String school = '$_d/icon_school.png';
+  static const String wave = '$_d/icon_wave.png';
+  static const String clap = '$_d/icon_clap.png';
+  static const String detective = '$_d/icon_detective.png';
 }

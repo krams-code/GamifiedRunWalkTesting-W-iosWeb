@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/game_notice.dart';
 import '../character/hero_picker_screen.dart' show saveErrorText;
 import '../../widgets/reward_popup.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -279,9 +280,7 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+    showGameNotice(context, msg);
   }
 
   /// Gear is drawn on the human hero only; costume heroes wear their own outfit.
@@ -734,16 +733,27 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
     );
   }
 
+  /// Every category is visible at once (a grid that wraps), so nothing is
+  /// hidden off-screen behind a sideways swipe.
   Widget _buildPills() {
-    return SizedBox(
-      height: 42,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
+    return LayoutBuilder(builder: (context, box) {
+      const gap = 6.0;
+      final cols = box.maxWidth >= 560 ? 5 : 3;
+      final w = (box.maxWidth - gap * (cols - 1)) / cols;
+      return Padding(
         padding: const EdgeInsets.only(bottom: 4),
-        itemCount: _tabs.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 7),
-        itemBuilder: (_, i) {
-          final t = _tabs[i];
+        child: Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final t in _tabs) SizedBox(width: w, child: _pill(t)),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _pill(_TabDef t) {
           final sel = _tab == t.key;
           return PressBlock(
             color: t.color,
@@ -756,7 +766,10 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                BlockText(t.label, size: 11.5, stroke: 3),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: BlockText(t.label, size: 11.5, stroke: 3),
+                ),
                 const SizedBox(height: 1),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
@@ -770,9 +783,6 @@ class _AvatarShopScreenState extends State<AvatarShopScreen> {
               ],
             ),
           );
-        },
-      ),
-    );
   }
 
   // ───────────────────────── content ─────────────────────────

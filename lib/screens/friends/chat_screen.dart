@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/game_notice.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -63,14 +64,15 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSent = DateTime.now();
       await FriendsService.sendMessage(me: _me, other: widget.friendUid, text: text);
       if (masked && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Some words were hidden. Please keep chat friendly.')));
+        showGameNotice(context, 'Some words were hidden. Please keep chat friendly.',
+            kind: NoticeKind.warning);
       }
       if (preset == null) _ctl.clear();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Could not send. Are you still friends?')));
+        showGameAlert(context,
+            title: 'NOT SENT',
+            message: 'Could not send. Are you still friends?');
       }
     } finally {
       if (mounted) setState(() => _sending = false);

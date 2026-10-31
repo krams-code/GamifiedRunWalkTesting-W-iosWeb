@@ -168,7 +168,7 @@ class PreRunView extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: const Row(
           children: [
-            EmojiText('\u{1F47B}', style: TextStyle(fontSize: 26)),
+            PixelIcon(AppIcons.ghost, size: 32),
             SizedBox(width: 10),
             Expanded(
               child: BlockText(
@@ -190,7 +190,7 @@ class PreRunView extends StatelessWidget {
       onTap: onGhostToggle,
       child: Row(
         children: [
-          const EmojiText('\u{1F47B}', style: TextStyle(fontSize: 26)),
+          const PixelIcon(AppIcons.ghost, size: 32),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -503,7 +503,7 @@ class PreRunView extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       child: Row(
         children: [
-          const Text('\u2694\uFE0F', style: TextStyle(fontSize: 26)),
+          const PixelIcon(AppIcons.swords, size: 30),
           const SizedBox(width: 10),
           const Expanded(
             child: BlockText(

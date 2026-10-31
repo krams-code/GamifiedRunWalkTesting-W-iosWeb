@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hakbanghero/widgets/block_inputs.dart' show PasswordEye;
 import 'package:hakbanghero/widgets/google_logo.dart';
 import 'package:hakbanghero/services/usernames.dart';
 import 'package:hakbanghero/services/private_data.dart';
@@ -349,13 +350,8 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  Widget _eye(bool obscured, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(obscured ? '🙈' : '👁️', style: const TextStyle(fontSize: 20)),
-        ),
-      );
+  Widget _eye(bool obscured, VoidCallback onTap) =>
+      PasswordEye(obscured: obscured, onTap: onTap);
 
   /// Live checklist + 6-segment power bar.
   Widget _strengthMeter() {

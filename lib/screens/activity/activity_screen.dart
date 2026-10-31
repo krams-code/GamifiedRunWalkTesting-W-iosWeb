@@ -31,8 +31,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
   _Range _range = _Range.all;
   _Sort _sort = _Sort.newest;
   bool _showTools = false;
-  static const int _pageSize = 20;
-  int _shown = _pageSize;
+  /// Latest runs first; SEE MORE PAST RUNS opens older ones step by step.
+  static const int _firstPage = 5;
+  static const int _pageSize = 10;
+  int _shown = _firstPage;
 
   @override
   void dispose() {
@@ -50,7 +52,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _query = '';
         _range = _Range.all;
         _sort = _Sort.newest;
-        _shown = _pageSize;
+        _shown = _firstPage;
       });
 
   /// Words a session can be found by: type, date (month, weekday, numbers),
@@ -195,6 +197,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
           else ...[
             _resultsLine(list.length),
             const SizedBox(height: 8),
+            BlockText(
+                _shown <= _firstPage ? '\u{1F552} LATEST RUNS' : '\u{1F4DC} LATEST + PAST RUNS',
+                size: 12,
+                stroke: 3,
+                color: Rb.gold),
+            const SizedBox(height: 8),
             ..._history(page),
             if (list.length > page.length)
               Padding(
@@ -210,9 +218,27 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     width: double.infinity,
                     child: Center(
                       child: BlockText(
-                          'SHOW MORE (${list.length - page.length} LEFT)',
+                          'SEE MORE PAST RUNS (${list.length - page.length} OLDER)',
                           size: 13,
                           stroke: 3.5),
+                    ),
+                  ),
+                ),
+              ),
+            if (_shown > _firstPage)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: PressBlock(
+                  color: Rb.slot,
+                  edge: Rb.panelEdge,
+                  depth: 4,
+                  radius: 12,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  onTap: () => setState(() => _shown = _firstPage),
+                  child: const SizedBox(
+                    width: double.infinity,
+                    child: Center(
+                      child: BlockText('SHOW LATEST ONLY', size: 12, stroke: 3),
                     ),
                   ),
                 ),
@@ -269,7 +295,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
             padding: const EdgeInsets.symmetric(vertical: 11),
             onTap: () => setState(() {
               _filter = t;
-              _shown = _pageSize;
+              _shown = _firstPage;
             }),
             child: Center(
               child: FittedBox(
@@ -328,7 +354,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     controller: _searchCtl,
                     onChanged: (v) => setState(() {
                       _query = v.trim().toLowerCase();
-                      _shown = _pageSize;
+                      _shown = _firstPage;
                     }),
                     onSubmitted: (_) =>
                         FocusManager.instance.primaryFocus?.unfocus(),
@@ -361,7 +387,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     onTap: () => setState(() {
                       _searchCtl.clear();
                       _query = '';
-                      _shown = _pageSize;
+                      _shown = _firstPage;
                     }),
                     child: const Icon(Icons.close,
                         color: Colors.white70, size: 20),
@@ -401,7 +427,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           onTap: () => setState(() {
             set();
-            _shown = _pageSize;
+            _shown = _firstPage;
           }),
           child: BlockText(label, size: 10.5, stroke: 3),
         );

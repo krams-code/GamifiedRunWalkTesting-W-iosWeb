@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/game_notice.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -47,10 +48,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-          SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+    showGameNotice(context, msg);
   }
 
   Future<void> _wear(HeroItem i, bool on) async {
@@ -285,19 +283,14 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
         // hero switcher
         const BlockText('YOUR COSTUMES', size: 13, stroke: 3),
         const SizedBox(height: 6),
-        SizedBox(
-          height: 104,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              for (final h in kHeroes)
-                if (isHeroUnlocked(h, prog))
-                  Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: _heroTile(h, h.id == heroId, tier),
-                  ),
-            ],
-          ),
+        // all owned costumes at once (wraps to more rows, no sideways swipe)
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final h in kHeroes)
+              if (isHeroUnlocked(h, prog)) _heroTile(h, h.id == heroId, tier),
+          ],
         ),
         if (hero?.costume ?? false) ...[
           const SizedBox(height: 8),
@@ -317,27 +310,38 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
         const SizedBox(height: 12),
 
         // slot tabs
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
+        // every slot visible at once: a 4-column grid, no sideways swipe
+        LayoutBuilder(builder: (context, box) {
+          const gap = 6.0;
+          final cols = box.maxWidth >= 560 ? 7 : 4;
+          final w = (box.maxWidth - gap * (cols - 1)) / cols;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
             children: [
               for (final s in HeroSlot.values)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
+                SizedBox(
+                  width: w,
                   child: PressBlock(
                     color: _slot == s ? Rb.green : Rb.slot,
                     edge: _slot == s ? Rb.greenEdge : Rb.panelEdge,
                     depth: 3,
                     radius: 10,
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
                     onTap: () => setState(() => _slot = s),
-                    child: BlockText('${s.emoji} ${s.label}', size: 11, stroke: 3),
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: BlockText('${s.emoji} ${s.label}',
+                            size: 11, stroke: 3),
+                      ),
+                    ),
                   ),
                 ),
             ],
-          ),
-        ),
+          );
+        }),
         const SizedBox(height: 12),
 
         if (mine.isEmpty)
@@ -397,7 +401,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
             children: [
               SizedBox(height: 56, child: HeroStill(heroId: h.id, tier: tier)),
               const SizedBox(height: 2),
-              Text(active ? '✔ ${h.name}' : h.name,
+              Text(h.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -440,7 +444,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
-              Text(on ? '✔ WORN' : 'TAP TO WEAR',
+              Text(on ? 'WORN' : 'TAP TO WEAR',
                   style: const TextStyle(
                       color: Color(0xFFFFE9A8), fontSize: 9, fontWeight: FontWeight.w900)),
             ],

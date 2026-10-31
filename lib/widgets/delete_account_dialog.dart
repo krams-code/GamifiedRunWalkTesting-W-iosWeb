@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'emoji_icons.dart';
 import 'package:flutter/material.dart';
 
 import '../screens/auth/login_screen.dart';
@@ -109,7 +110,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('⚠️', style: TextStyle(fontSize: 42)),
+              const EmojiText('⚠️', style: TextStyle(fontSize: 42)),
               const SizedBox(height: 6),
               const BlockText('DELETE ACCOUNT',
                   size: 22, stroke: 5, color: Rb.red),

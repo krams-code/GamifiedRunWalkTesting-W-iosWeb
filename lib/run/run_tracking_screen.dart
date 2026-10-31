@@ -1,4 +1,6 @@
 import 'dart:async';
+import '../widgets/emoji_icons.dart';
+import '../widgets/game_notice.dart';
 import '../utils/player_stats.dart' show LevelProgress;
 import '../state/user_doc.dart';
 import '../widgets/reward_popup.dart';
@@ -760,7 +762,7 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('\u{1F3C3}', style: TextStyle(fontSize: 44)),
+              const EmojiText('\u{1F3C3}', style: TextStyle(fontSize: 44)),
               const SizedBox(height: 6),
               const BlockText('UNFINISHED RUN', size: 22, stroke: 5, color: Rb.gold),
               const SizedBox(height: 8),
@@ -1387,13 +1389,9 @@ class _RunTrackingScreenState extends State<RunTrackingScreen>
   }
 
   void _showSnack(String msg) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: Rb.panel,
-      ),
-    );
+    if (!mounted) return;
+    showGameNotice(context, msg,
+        kind: msg.startsWith('GPS') ? NoticeKind.warning : NoticeKind.info);
   }
 
   // ── BUILD ──────────────────────────────────────────────────────────────────

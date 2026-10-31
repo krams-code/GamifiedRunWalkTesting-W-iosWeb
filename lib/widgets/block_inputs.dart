@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../constants/app_icons.dart';
+import 'pixel_icon.dart';
+import 'game_notice.dart';
 
 import 'block_ui.dart';
 import 'emoji_icons.dart';
@@ -140,21 +143,10 @@ class NeonBlueButton extends StatelessWidget {
   }
 }
 
+/// Game-styled message (pop-up window for problems, drop-in card for the
+/// rest). Kept under its old name so every caller stays the same.
 void blockSnack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Rb.panel,
-        duration: const Duration(seconds: 3),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Colors.black, width: 3),
-        ),
-        content: BlockText(msg, size: 12, stroke: 3),
-      ),
-    );
+  showGameNotice(context, msg);
 }
 
 /// Sky-blue title banner shared by Login / Sign Up.
@@ -201,4 +193,31 @@ class AuthBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Show / hide password button: the game's pixel eye, closed while the
+/// password is hidden and open while it is shown.
+class PasswordEye extends StatelessWidget {
+  final bool obscured;
+  final VoidCallback onTap;
+  const PasswordEye({super.key, required this.obscured, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        label: obscured ? 'Show password' : 'Hide password',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: SizedBox(
+              width: 26,
+              height: 26,
+              child: PixelIcon(obscured ? AppIcons.eyeClosed : AppIcons.eye,
+                  size: 26),
+            ),
+          ),
+        ),
+      );
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'emoji_icons.dart';
 
 import '../services/sound.dart';
 import 'block_ui.dart';
@@ -115,7 +116,7 @@ class _RewardCard extends StatelessWidget {
                             alignment: Alignment.center,
                             children: [
                               Positioned.fill(child: FxOnce(fx)),
-                              Text(emoji, style: const TextStyle(fontSize: 38)),
+                              EmojiText(emoji, style: const TextStyle(fontSize: 38)),
                             ],
                           ),
                         ),

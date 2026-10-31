@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'emoji_icons.dart';
 
 import '../models/badge_definitions.dart';
 import 'block_ui.dart';
@@ -61,7 +62,7 @@ class BadgeMedal extends StatelessWidget {
                   child: ColorFiltered(colorFilter: _grey, child: img),
                 ),
           if (!unlocked)
-            Text('🔒', style: TextStyle(fontSize: size * 0.30)),
+            EmojiText('🔒', style: TextStyle(fontSize: size * 0.30)),
         ],
       ),
     );

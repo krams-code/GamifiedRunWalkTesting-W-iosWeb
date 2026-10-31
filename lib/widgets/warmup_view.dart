@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'emoji_icons.dart';
 
 import 'package:flutter/material.dart';
 
@@ -205,7 +206,7 @@ class _WarmUpViewState extends State<WarmUpView>
       title: 'SKIP WARM-UP?',
       message: 'Are you sure you want to skip warm up? A few minutes of '
           'warming up helps prevent cramps and injuries.',
-      art: const Text('\u{1F525}', style: TextStyle(fontSize: 56)),
+      art: const EmojiText('\u{1F525}', style: TextStyle(fontSize: 56)),
       confirmLabel: 'YES, SKIP',
       onConfirm: _skip,
     );

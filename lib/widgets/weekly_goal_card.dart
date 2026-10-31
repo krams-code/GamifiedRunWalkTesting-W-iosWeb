@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'game_notice.dart';
 import 'reward_popup.dart';
 import '../services/run_saver.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -80,13 +81,13 @@ class _WeeklyGoalCardState extends State<WeeklyGoalCard> {
     await _ref.set({'goal_mode': next.name}, SetOptions(merge: true));
     if (!mounted) return;
     setState(() => _nextMode = next);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-          content: Text(next == g.mode
-              ? 'Kept: ${next.name.toUpperCase()} goal.'
-              : 'From next Monday your goal is ${next.name.toUpperCase()}. '
-                  "This week's goal stays the same.")));
+    showGameToast(
+        context,
+        next == g.mode
+            ? 'Kept: ${next.name.toUpperCase()} goal.'
+            : 'From next Monday your goal is ${next.name.toUpperCase()}. '
+                "This week's goal stays the same.",
+        kind: NoticeKind.info);
   }
 
   Future<void> _claim() async {
@@ -110,9 +111,9 @@ class _WeeklyGoalCardState extends State<WeeklyGoalCard> {
           debugPrint('weekly claim refused: $e');
           if (mounted) {
             setState(() => _claimed = '');
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(const SnackBar(content: Text('Claim failed. Try again.')));
+            showGameAlert(context,
+                title: 'NOT CLAIMED',
+                message: 'The reward could not be claimed. Try again.');
           }
         });
       }
@@ -127,9 +128,9 @@ class _WeeklyGoalCardState extends State<WeeklyGoalCard> {
       debugPrint('weekly claim failed: $e');
       if (mounted && e != 'done') {
         Sound.I.play(Sfx.error);
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Claim failed. Try again.')));
+        showGameAlert(context,
+            title: 'NOT CLAIMED',
+            message: 'The reward could not be claimed. Try again.');
       }
       await _load();
     } finally {
