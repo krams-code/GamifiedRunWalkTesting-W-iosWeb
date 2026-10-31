@@ -277,11 +277,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             ],
           ],
         ),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 6),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
           child: Text(
-            'Week/Month filtering coming soon — showing All Time',
-            style: TextStyle(
+            switch (_timeIdx) {
+              0 => 'Ranked by km run this week \u2022 resets every Monday',
+              1 => 'Ranked by km run this month \u2022 resets on the 1st',
+              _ => 'Ranked by total XP',
+            },
+            style: const TextStyle(
                 color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w800),
           ),
         ),

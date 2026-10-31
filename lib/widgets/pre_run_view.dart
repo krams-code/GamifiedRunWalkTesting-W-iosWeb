@@ -1,4 +1,5 @@
 import 'sync_chip.dart';
+import 'emoji_icons.dart';
 import 'scene_backdrop.dart';
 import '../models/daily_quest_definitions.dart';
 import '../services/run_saver.dart';
@@ -167,7 +168,7 @@ class PreRunView extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: const Row(
           children: [
-            Text('\u{1F47B}', style: TextStyle(fontSize: 26)),
+            EmojiText('\u{1F47B}', style: TextStyle(fontSize: 26)),
             SizedBox(width: 10),
             Expanded(
               child: BlockText(
@@ -189,7 +190,7 @@ class PreRunView extends StatelessWidget {
       onTap: onGhostToggle,
       child: Row(
         children: [
-          const Text('\u{1F47B}', style: TextStyle(fontSize: 26)),
+          const EmojiText('\u{1F47B}', style: TextStyle(fontSize: 26)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

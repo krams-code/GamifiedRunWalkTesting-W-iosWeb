@@ -1,8 +1,8 @@
 // lib/models/badge_definitions.dart
 //
-// Achievement badges. Nothing is stored: every badge is worked out from data
-// the app already keeps (user totals + run history), so there are no new
-// Firestore fields or rules and a badge can never be "granted" by tampering.
+// Achievement badges, worked out from the user totals + run history. Run
+// history is private, so the owner's app also publishes its badge records
+// (`badge_stats` on the user doc) for other players' cards.
 
 import 'package:hakbanghero/models/activity_model.dart';
 import 'package:hakbanghero/utils/player_stats.dart' show LevelProgress;
@@ -29,12 +29,50 @@ class BadgeStats {
     this.nightOwl = false,
   });
 
-  /// Only what any player can see on someone else's card.
-  factory BadgeStats.fromPublic(Map<String, dynamic> user) => BadgeStats(
-        sessions: (user['total_sessions'] as num?)?.toInt() ?? 0,
-        totalKm: (user['total_km'] as num?)?.toDouble() ?? 0,
-        level: LevelProgress.fromXp((user['xp'] as num?)?.toInt() ?? 0).level,
+  /// What any player sees on someone else's card: the public totals plus
+  /// the badge records the owner's app publishes (`badge_stats`).
+  factory BadgeStats.fromPublic(Map<String, dynamic> user) {
+    final b = (user['badge_stats'] as Map?) ?? const {};
+    return BadgeStats(
+      sessions: (user['total_sessions'] as num?)?.toInt() ?? 0,
+      totalKm: (user['total_km'] as num?)?.toDouble() ?? 0,
+      level: LevelProgress.fromXp((user['xp'] as num?)?.toInt() ?? 0).level,
+      longestRunKm: (b['longest_run_km'] as num?)?.toDouble() ?? 0,
+      bestPaceSecsPerKm: (b['best_pace_s'] as num?)?.toInt() ?? 0,
+      longestStreakDays: (b['longest_streak_days'] as num?)?.toInt() ?? 0,
+      earlyBird: b['early_bird'] == true,
+      nightOwl: b['night_owl'] == true,
+    );
+  }
+
+  /// The best of this and [other] (records only ever go up).
+  BadgeStats merge(BadgeStats other) => BadgeStats(
+        sessions: sessions,
+        totalKm: totalKm,
+        level: level,
+        longestRunKm:
+            longestRunKm > other.longestRunKm ? longestRunKm : other.longestRunKm,
+        bestPaceSecsPerKm: bestPaceSecsPerKm == 0
+            ? other.bestPaceSecsPerKm
+            : (other.bestPaceSecsPerKm == 0 ||
+                    bestPaceSecsPerKm < other.bestPaceSecsPerKm
+                ? bestPaceSecsPerKm
+                : other.bestPaceSecsPerKm),
+        longestStreakDays: longestStreakDays > other.longestStreakDays
+            ? longestStreakDays
+            : other.longestStreakDays,
+        earlyBird: earlyBird || other.earlyBird,
+        nightOwl: nightOwl || other.nightOwl,
       );
+
+  /// `badge_stats` for the public user doc.
+  Map<String, dynamic> toPublic() => {
+        'longest_run_km': double.parse(longestRunKm.toStringAsFixed(3)),
+        'best_pace_s': bestPaceSecsPerKm,
+        'longest_streak_days': longestStreakDays,
+        'early_bird': earlyBird,
+        'night_owl': nightOwl,
+      };
 
   factory BadgeStats.from({
     required Map<String, dynamic> user,

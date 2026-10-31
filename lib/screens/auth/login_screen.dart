@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hakbanghero/widgets/google_logo.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -176,9 +177,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           onTap: _loading ? null : _loginGoogle,
                           child: const SizedBox(
                             width: double.infinity,
-                            child: Center(
-                              child: BlockText('G  CONTINUE WITH GOOGLE',
-                                  size: 13, stroke: 3.5),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                GoogleLogo(size: 20),
+                                SizedBox(width: 10),
+                                BlockText('CONTINUE WITH GOOGLE', size: 13, stroke: 3.5),
+                              ],
                             ),
                           ),
                         ),

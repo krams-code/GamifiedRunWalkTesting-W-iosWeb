@@ -278,11 +278,11 @@ class _PlayerCardState extends State<_PlayerCard> {
     );
   }
 
-  /// Badges anyone can verify from the public user doc (sessions, km, level).
+  /// Every badge this player has earned (public totals + their published
+  /// badge records), the same set they see on their own profile.
   Widget _badgesRow() {
     final stats = BadgeStats.fromPublic(d);
-    final earned =
-        kBadges.where((b) => b.public && b.unlocked(stats)).toList();
+    final earned = kBadges.where((b) => b.unlocked(stats)).toList();
     return Block(
       color: Rb.slate,
       edge: Rb.slateEdge,

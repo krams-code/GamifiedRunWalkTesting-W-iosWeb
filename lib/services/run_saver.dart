@@ -142,6 +142,18 @@ List<Map<String, double>> _route(Object? raw) => [
             },
     ];
 
+/// `badge_stats` updates for a finished run (longest run, early / late run).
+Map<String, dynamic> _badgeFields(
+    Map<String, dynamic> data, double km, int startHour) {
+  final b = (data['badge_stats'] as Map?) ?? const {};
+  final longest = (b['longest_run_km'] as num?)?.toDouble() ?? 0;
+  return {
+    if (km > longest) 'badge_stats.longest_run_km': double.parse(km.toStringAsFixed(3)),
+    if (startHour < 7) 'badge_stats.early_bird': true,
+    if (startHour >= 20) 'badge_stats.night_owl': true,
+  };
+}
+
 abstract final class RunSaver {
   // Mobile data / Safari can be slow to open the first connection.
   static const Duration timeout = Duration(seconds: 30);
@@ -342,6 +354,8 @@ abstract final class RunSaver {
         'last_run_id': p.id,
         // where the next run may start (rules: runs never overlap)
         'last_run_end': Timestamp.fromMillisecondsSinceEpoch(endMs),
+        // badge records other players can see on my card
+        ..._badgeFields(data, km, startHour),
         'xp': FieldValue.increment(p.xp),
         'coins': FieldValue.increment(addCoins),
         ...coinsTodayFields(data, addCoins),

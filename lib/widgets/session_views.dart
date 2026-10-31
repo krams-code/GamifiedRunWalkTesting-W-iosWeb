@@ -97,17 +97,14 @@ class TrackingView extends StatelessWidget {
       2 => ('WEAK GPS SIGNAL', const Color(0xFFE5784D)),
       _ => ('GPS READY', const Color(0xFF1E8F55)),
     };
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-        decoration: BoxDecoration(
-          color: c,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.black, width: 2),
-        ),
-        child: BlockText('\u{1F4E1} $label', size: 10, stroke: 2.5),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: c,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black, width: 2),
       ),
+      child: BlockText('\u{1F4E1} $label', size: 10, stroke: 2.5),
     );
   }
 
@@ -138,7 +135,8 @@ class TrackingView extends StatelessWidget {
         child: LayoutBuilder(builder: (context, box) {
         final col = Column(
           children: [
-            // Activity type + elapsed time
+            // Activity type + GPS state. The time lives in the mode strip
+            // below (stage clock / free-run timer), so it isn't shown twice.
             Row(
               children: [
                 Block(
@@ -147,40 +145,19 @@ class TrackingView extends StatelessWidget {
                   depth: 4,
                   radius: 12,
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: BlockText('${type.emoji} ${type.label.toUpperCase()}',
                       size: 13, stroke: 3.5),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Block(
-                    color: Rb.panel,
-                    edge: Rb.panelEdge,
-                    depth: 4,
-                    radius: 12,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const BlockText('⏱', size: 16, stroke: 2),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: BlockText(time, size: 30, stroke: 5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                const Spacer(),
+                if (gpsStatus != 3) _gpsChip(),
+                // no mode strip (shouldn't happen): keep a timer visible
+                if (mode == null) ...[
+                  const SizedBox(width: 8),
+                  BlockText('\u23F1 $time', size: 18, stroke: 4),
+                ],
               ],
             ),
-            if (gpsStatus != 3) ...[
-              const SizedBox(height: 8),
-              _gpsChip(),
-            ],
             if (ghost != null) ...[
               const SizedBox(height: 10),
               _ghostBanner(ghost!),
@@ -288,12 +265,12 @@ class TrackingView extends StatelessWidget {
         depth: 4,
         radius: 12,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: const Row(
+        child: Row(
           children: [
-            Expanded(
+            const Expanded(
               child: BlockText('\u267E\uFE0F FREE RUN', size: 13, stroke: 3.5),
             ),
-            BlockText('NO LIMITS', size: 11, stroke: 3, color: Color(0xFFD7C8FF)),
+            BlockText('\u23F1 $time', size: 16, stroke: 4),
           ],
         ),
       );

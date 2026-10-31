@@ -76,6 +76,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ...?userSnap.data(),
         ...await PrivateData.load(uid),
       };
+      _publishBadges(uid, data, sessions);
       if (!mounted) return;
       setState(() {
         _user = data;
@@ -423,6 +424,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  /// Other players can't read my run history, so publish my badge records
+  /// (best of what is stored and what my runs show). Only writes on change.
+  void _publishBadges(
+      String uid, Map<String, dynamic> data, List<ActivitySession> runs) {
+    try {
+      final f = FitnessStats.compute(runs,
+          weightKg: (data['weight_kg'] as num?)?.toDouble(),
+          enduranceBonus: (data['endurance_bonus'] as num?)?.toInt() ?? 0);
+      final mine = BadgeStats.from(
+        user: data,
+        runs: runs,
+        longestRunKm: f.longestRunKm,
+        bestPaceSecsPerKm: f.bestPaceSecsPerKm,
+        longestStreakDays: f.longestStreakDays,
+      ).merge(BadgeStats.fromPublic(data));
+      final next = mine.toPublic();
+      final old = (data['badge_stats'] as Map?) ?? const {};
+      final same = next.entries.every((e) => old[e.key] == e.value);
+      if (!same) {
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .update({'badge_stats': next}).catchError((Object _) {});
+      }
+    } catch (_) {}
   }
 
   // ── tabs ─────────────────────────────────────────────────────────────
